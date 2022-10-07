@@ -1,12 +1,15 @@
 from matplotlib.streamplot import InvalidIndexError
 from torch.utils.data import Dataset
-import os
+import os, glob
 from natsort import natsorted
 from PIL import Image
 
 class CelebDataset(Dataset):
-    def __init__(self, folder_path, transform=None):
-        image_list = os.listdir(folder_path)
+    def __init__(self, folder_path, img_ext = None, transform=None):
+        if img_ext:
+            image_list = [f for f in os.listdir(folder_path) if f.endswith(img_ext)]
+        else:
+            image_list = os.listdir(folder_path)
         
         self.root_dir = folder_path
         self.transform = transform
