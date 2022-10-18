@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# IntelliJ project files
+.idea
+
 # C extensions
 *.so
 
@@ -13,6 +16,8 @@ develop-eggs/
 dist/
 downloads/
 eggs/
+data/
+Img/
 .eggs/
 lib/
 lib64/
