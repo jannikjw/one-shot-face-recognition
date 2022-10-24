@@ -5,6 +5,7 @@ __pycache__/
 
 # IntelliJ project files
 .idea
+.vscode
 
 # C extensions
 *.so
@@ -20,6 +21,7 @@ data/
 Img/
 .eggs/
 lib/
+pytorch_objects/
 lib64/
 parts/
 sdist/
