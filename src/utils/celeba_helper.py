@@ -7,7 +7,6 @@ from natsort import natsorted
 from PIL import Image
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 from src.utils.similarity_functions import (
     cosine_similarity,
     min_norm_2,
@@ -39,6 +38,17 @@ class CelebADataset(Dataset):
     def __len__(self):
         return len(self.image_names)
 
+    # def __getitem__(self, idx):
+    #     # Get the path to the image
+    #     img_path = os.path.join(self.root_dir, self.image_names[idx])
+    #     # Load image and convert it to RGB
+    #     img = Image.open(img_path).convert("RGB")
+    #     # Apply transformations to the image
+    #     if self.transform:
+    #         img = self.transform(img)
+
+    #     return img, self.image_names[idx]
+    
     def __getitem__(self, idx):
         # Get the path to the image
         img_path = os.path.join(self.root_dir, self.image_names[idx])
@@ -48,22 +58,31 @@ class CelebADataset(Dataset):
         if self.transform:
             img = self.transform(img)
 
-        return img, self.image_names[idx]
+        target = self.get_label_from_file_name(self.image_names[idx])
+
+        return img, target
 
     def get_file_label_mapping(self):
         return self.file_label_mapping
 
     def get_label_from_file_name(self, file_name):
-        return self.file_label_mapping[
+        label = self.file_label_mapping[
             self.file_label_mapping["file_name"] == file_name
         ]["person_id"].values[0]
+        if label is None:
+            raise Exception('No Label found.')
+        else:
+            return label - 1
 
     def get_labels_from_file_names(self, file_names: list):
-        labels = self.file_label_mapping[
+        labels = list(map(lambda x: int(x)-1, self.file_label_mapping[
             self.file_label_mapping["file_name"].isin(file_names)
-        ]["person_id"].values
-        print(f"Number of people in dataset: {len(np.unique(labels))}")
-        return labels
+        ]["person_id"].tolist()))
+        if labels is None:
+            raise Exception('No Labels found.')
+        else:
+            print(f"Number of people in dataset: {len(np.unique(labels))}")
+            return labels
 
 
 class CelebAClassifier:
@@ -82,13 +101,12 @@ class CelebAClassifier:
         """
         Calculate distance for the test dataset and calculate accuracy
         """
-        print(f'Calculating the {function} metric...')
-        n = len(test_embeddings)
+
         predictions = []
         predictions_files = []
         closest_image_file_name = ""
 
-        for idx, test_embedding in tqdm(enumerate(test_embeddings)):
+        for test_embedding in test_embeddings:
             if function == "cosine_similarity":
                 closest_image_file_name = anchor_file_names[
                     cosine_similarity(test_embedding, train_embeddings)
@@ -108,11 +126,11 @@ class CelebAClassifier:
 
             predictions.append(predicted_person_id)
             predictions_files.append(closest_image_file_name)
-            
+
         return predictions, predictions_files
 
 
-    def load_data_specific_images(self, files_to_load: list):
+    def load_data_specific_images(self, files_to_load: list): #TODO: Delete function as you can use SubsetRandomSampler instead
         """
         Load data and create embeddings.
         """
@@ -121,7 +139,7 @@ class CelebAClassifier:
         count = 0
         face_file_names = []
 
-        for file_name in tqdm(files_to_load):
+        for file_name in files_to_load:
             count += 1
             img = Image.open(f"{self.dataset.root_dir}/{file_name}")
             aligned, _ = self.detection_model(img, return_prob=True)
@@ -139,6 +157,9 @@ class CelebAClassifier:
                     embeddings = batch_embeddings
                 else:
                     embeddings = torch.cat([embeddings, batch_embeddings])
+
+                if count % 100 == 0:
+                    print(f"Images loaded: {count} / {len(files_to_load)}")
             else:
                 no_face_detected.append(file_name)
 
