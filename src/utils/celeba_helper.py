@@ -6,6 +6,7 @@ from torch.utils.data import Dataset, DataLoader
 from natsort import natsorted
 from PIL import Image
 import numpy as np
+from tqdm import tqdm
 import pandas as pd
 from src.utils.similarity_functions import (
     cosine_similarity,
@@ -97,7 +98,7 @@ class CelebAClassifier:
         self.detection_model = detection_model
         self.embedding_model = embedding_model
 
-    def predict(self, test_embeddings: tensor, train_embeddings: tensor, anchor_file_names: list, function: str = "norm_2"): #type: ignore
+    def predict(self, test_embeddings: tensor, train_embeddings: tensor, train_labels:list, function: str = "norm_2"): #type: ignore
         """
         Calculate distance for the test dataset and calculate accuracy
         """
@@ -106,28 +107,23 @@ class CelebAClassifier:
         predictions_files = []
         closest_image_file_name = ""
 
-        for test_embedding in test_embeddings:
+        for test_embedding in tqdm(test_embeddings):
             if function == "cosine_similarity":
-                closest_image_file_name = anchor_file_names[
+                predicted_person_id = train_labels[
                     cosine_similarity(test_embedding, train_embeddings)
                 ]
             elif function == "norm_2":
-                closest_image_file_name = anchor_file_names[
+                predicted_person_id = train_labels[
                     min_norm_2(test_embedding, train_embeddings)
                 ]
             elif function == "norm_2_squared":
-                closest_image_file_name = anchor_file_names[
+                predicted_person_id = train_labels[
                     min_norm_2_squared(test_embedding, train_embeddings)
                 ]
 
-            predicted_person_id = self.dataset.get_label_from_file_name(
-                closest_image_file_name
-            )
-
             predictions.append(predicted_person_id)
-            predictions_files.append(closest_image_file_name)
 
-        return predictions, predictions_files
+        return predictions
 
 
     def load_data_specific_images(self, files_to_load: list): #TODO: Delete function as you can use SubsetRandomSampler instead
