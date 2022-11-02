@@ -1,13 +1,15 @@
 ## Create a custom Dataset class
 import os
 import torch
-from torch import tensor
+from torch import positive, tensor
 from torch.utils.data import Dataset, DataLoader
 from natsort import natsorted
 from PIL import Image
 import numpy as np
 import pandas as pd
+import random
 from tqdm import tqdm
+from torchvision import transforms
 from src.utils.similarity_functions import (
     cosine_similarity,
     min_norm_2,
@@ -156,3 +158,69 @@ def save_file_names(file_names: list, destination_path: str):
             fp.write("%s\n" % item)
         print("Done")
         
+
+# Vikram
+class CelebADatasetTriplet(CelebADataset):
+    def __init__(self, root_dir, mapping_file: str, transform=None, 
+                train: bool = True, img_ext: str = 'pgm'):
+        """
+        Args:
+          root_dir (string): Directory with all the images
+          mapping_file (string): File path to mapping file from image to person
+          transform (callable, optional): transform to be applied to each image sample
+        """
+        # Read names of images in the root directory
+        image_names = os.listdir(root_dir)
+        image_names = [x for x in image_names if x.split(".")[-1]==img_ext]
+        print(f'Image names size is: {len(image_names)}')
+        self.is_train = train
+
+
+        self.file_label_mapping = pd.read_csv(
+            mapping_file, header=None, sep=" ", names=["file_name", "person_id"]
+        )
+        self.file_label_mapping = self.file_label_mapping.sort_values(by=["file_name"]).reset_index(drop=True)
+
+        self.root_dir = root_dir
+        self.transform = transform
+        self.image_names = natsorted(image_names)
+
+
+    def get_image_label(self, idx):
+        # Get the path to the image
+        img_path = os.path.join(self.root_dir, self.image_names[idx])
+        # Load image and convert it to RGB
+        img = Image.open(img_path).convert("RGB")
+        # Apply transformations to the image
+        if self.transform:
+            img = self.transform(img)
+
+        img_name = self.image_names[idx]
+
+        return img, self.file_label_mapping["person_id"][self.file_label_mapping["file_name"]==img_name].iloc[0], img_name
+
+    def __getitem__(self, idx):
+        
+        anchor, anchor_label, anchor_name = self.get_image_label(idx)
+
+        if self.is_train:
+
+            # loading positive image
+            pos_list = self.file_label_mapping["file_name"][(self.file_label_mapping["person_id"]==anchor_label) & (self.file_label_mapping["file_name"]!= anchor_name)]
+            pos_name = pos_list.sample(n=1, random_state=42)
+            pos_idx = pos_name.index[0]
+
+            positive, pos_label, pos_name = self.get_image_label(pos_idx)
+
+            # loading negative image
+            neg_list = self.file_label_mapping["file_name"][self.file_label_mapping["person_id"]!=anchor_label]
+            neg_name = neg_list.sample(n=1, random_state=42)
+            neg_idx = neg_name.index[0]
+
+            negative, neg_label, neg_name = self.get_image_label(neg_idx)
+
+            return anchor, positive, negative, anchor_label
+
+        else:
+            return anchor
+
