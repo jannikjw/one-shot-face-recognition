@@ -249,22 +249,3 @@ class CelebADatasetTriplet(CelebADataset):
             anchor, anchor_label, anchor_name = self.get_image_label(idx, get_train=False)
             return anchor, anchor_label
 
-
-if __name__ == "__main__":
-    img_folder = 'data/img_align_celeba'
-    mapping_file = 'data/identity_CelebA_train_test_split.txt'
-
-    # Spatial size of training images, images are resized to this size.
-    image_size = 160
-    transform=transforms.Compose([
-        transforms.Resize(image_size),
-        transforms.CenterCrop(image_size),
-        transforms.ToTensor()
-    ])
-
-    # Load the dataset from file and apply transformations
-    celeba_dataset = CelebADatasetTriplet(img_folder, mapping_file, transform)
-
-    celeba_dataset[0]
-
-    print("hi")
