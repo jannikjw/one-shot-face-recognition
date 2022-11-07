@@ -157,7 +157,7 @@ def save_file_names(file_names: list, destination_path: str):
             # write each item on a new line
             fp.write("%s\n" % item)
         print("Done")
-        
+
 
 # Vikram
 class CelebADatasetTriplet(CelebADataset):
@@ -231,14 +231,17 @@ class CelebADatasetTriplet(CelebADataset):
 
             # loading positive image
             pos_list = self.test_df["file_name"][(self.test_df["person_id"]==anchor_label)]
-            pos_name = pos_list.sample(n=1, random_state=42)
-            pos_idx = pos_name.index[0]
+            if len(pos_list) == 0:
+                positive = anchor
+            else:
+                pos_name = pos_list.sample(n=1) #random_state=42
+                pos_idx = pos_name.index[0]
 
-            positive, pos_label, pos_name = self.get_image_label(pos_idx, get_train=False)
+                positive, pos_label, pos_name = self.get_image_label(pos_idx, get_train=False)
 
             # loading negative image
             neg_list = self.test_df["file_name"][(self.test_df["person_id"]!=anchor_label)]
-            neg_name = neg_list.sample(n=1, random_state=42)
+            neg_name = neg_list.sample(n=1) # random_state=42
             neg_idx = neg_name.index[0]
 
             negative, neg_label, neg_name = self.get_image_label(neg_idx, get_train=False)
