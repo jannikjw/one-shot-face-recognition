@@ -2,6 +2,10 @@
 import os
 import torch
 from torch import tensor
+from torch import optim
+from torch.optim.lr_scheduler import MultiStepLR
+from torch.utils.tensorboard import SummaryWriter
+from facenet_pytorch import MTCNN, InceptionResnetV1, training, fixed_image_standardization
 from torch.utils.data import Dataset, DataLoader
 from natsort import natsorted
 from PIL import Image
@@ -166,54 +170,81 @@ class CelebAClassifier:
 
         return embeddings, face_file_names
     
-    def finetune_model(model, loss_fn=torch.nn.CrossEntropyLoss(), metrics={}, epochs:int=10, optimizer=None):   
-        # Make use of multiple GPUs if available
-        CUDA = torch.cuda.is_available()
-        nGPU = torch.cuda.device_count()
+def finetune_model(model, train_loader, val_loader, loss_fn=torch.nn.CrossEntropyLoss(), metrics={}, epochs:int=10, lr=0.001):   
+    # Make use of multiple GPUs if available
+    CUDA = torch.cuda.is_available()
+    nGPU = torch.cuda.device_count()
 
-        if CUDA:
-            model = model.cuda()
-            if nGPU > 1:
-                model = nn.DataParallel(model)
+    if CUDA:
+        model = model.cuda()
+        if nGPU > 1:
+            model = nn.DataParallel(model)
+        
+    logits = model.module.logits.parameters() if nGPU > 1 else model.logits.parameters()
+    optimizer = optim.Adam(logits, lr=lr)
+    
+    scheduler = MultiStepLR(optimizer, [5, 10])
+    
+    metric_tracker = {}
+    
+    writer = SummaryWriter()
+    writer.iteration, writer.interval = 0, 10
 
-        # Only fine-tune the logits layer
-        if optimizer==None:
-            optimizer = optim.Adam(logits, lr=0.001)
+    for epoch in range(epochs):
+        print('\nEpoch {}/{}'.format(epoch + 1, epochs))
+        print('-' * 10)
 
-        logits = model.module.logits.parameters() if nGPU > 1 else model.logits.parameters()
+        model.train()
+        train_loss, train_metrics = training.pass_epoch(
+            model, loss_fn, train_loader, optimizer, scheduler,
+            batch_metrics=metrics, show_running=True, device=device,
+            writer=writer
+        )
+        
+        
+        model.eval()
+        val_loss, val_metrics = training.pass_epoch(
+            model, loss_fn, val_loader,
+            batch_metrics=metrics, show_running=True, device=device,
+            writer=writer
+        )
 
-        scheduler = MultiStepLR(optimizer, [5, 10])
+    writer.close()
+    
+    return model
 
-        metric_tracker = {}
-
-        writer = SummaryWriter()
-        writer.iteration, writer.interval = 0, 10
-
-        # set_parameter_requires_grad(model=model, feature_extracting=True)
-        # model.logits.requires_grad_(True)
-
-        for epoch in range(epochs):
-            print('\nEpoch {}/{}'.format(epoch + 1, epochs))
-            print('-' * 10)
-
-            model.train()
-            train_loss, train_metrics = training.pass_epoch(
-                model, loss_fn, train_loader, optimizer, scheduler,
-                batch_metrics=metrics, show_running=True, device=device,
-                writer=writer
-            )
-
-
-            model.eval()
-            val_loss, val_metrics = training.pass_epoch(
-                model, loss_fn, val_loader,
-                batch_metrics=metrics, show_running=True, device=device,
-                writer=writer
-            )
-
-        writer.close()
-
-        return model        
+def test(dataloader, model, loss_fn):
+    size = len(dataloader.dataset)
+    num_batches = len(dataloader)
+    predictions = torch.tensor([])
+    labels = torch.tensor([])
+    
+    model.eval()
+    test_loss, correct = 0, 0
+    
+    with torch.no_grad():
+        idx = 0
+        for X, y in tqdm(dataloader, total=num_batches):
+            idx += 1
+            X, y = X.to(device), y.to(device)
+            pred = model(X)
+                
+            test_loss += loss_fn(pred, y).item()
+            correct += (pred.argmax(1) == y).type(torch.float).sum().item()
+            
+            if not predictions.numel():
+                predictions = pred.cpu()
+                labels = y.cpu()
+            else:
+                predictions = torch.cat([predictions, pred.cpu()])
+                labels = torch.cat([labels, y.cpu()])
+            
+            del pred, X, y
+            
+    test_loss /= num_batches
+    correct /= size
+    print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
+    return predictions, labels
         
 def get_embeddings(model, dataloader):
     model.eval()
