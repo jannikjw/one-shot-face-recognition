@@ -5,7 +5,6 @@ def min_norm_2(test_value, trained_examples):
     dists = [(test_value - anchor).norm().item() for anchor in trained_examples]
     return np.argmin(dists)
 
-
 def min_norm_2_squared(test_value, trained_examples):
     dists = [(test_value - anchor).norm().item() ** 2 for anchor in trained_examples]
     return np.argmin(dists)

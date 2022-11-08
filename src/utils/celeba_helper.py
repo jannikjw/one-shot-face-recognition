@@ -165,11 +165,83 @@ class CelebAClassifier:
         print(f"Size of the embeddings: {embeddings.shape}")
 
         return embeddings, face_file_names
+    
+    def finetune_model(model, loss_fn=torch.nn.CrossEntropyLoss(), metrics={}, epochs:int=10, optimizer=None):   
+        # Make use of multiple GPUs if available
+        CUDA = torch.cuda.is_available()
+        nGPU = torch.cuda.device_count()
 
-def save_file_names(file_names: list, destination_path: str):
-    with open(destination_path, "w") as fp:
-        for item in file_names:
-            # write each item on a new line
-            fp.write("%s\n" % item)
-        print("Done")
+        if CUDA:
+            model = model.cuda()
+            if nGPU > 1:
+                model = nn.DataParallel(model)
+
+        # Only fine-tune the logits layer
+        if optimizer==None:
+            optimizer = optim.Adam(logits, lr=0.001)
+
+        logits = model.module.logits.parameters() if nGPU > 1 else model.logits.parameters()
+
+        scheduler = MultiStepLR(optimizer, [5, 10])
+
+        metric_tracker = {}
+
+        writer = SummaryWriter()
+        writer.iteration, writer.interval = 0, 10
+
+        # set_parameter_requires_grad(model=model, feature_extracting=True)
+        # model.logits.requires_grad_(True)
+
+        for epoch in range(epochs):
+            print('\nEpoch {}/{}'.format(epoch + 1, epochs))
+            print('-' * 10)
+
+            model.train()
+            train_loss, train_metrics = training.pass_epoch(
+                model, loss_fn, train_loader, optimizer, scheduler,
+                batch_metrics=metrics, show_running=True, device=device,
+                writer=writer
+            )
+
+
+            model.eval()
+            val_loss, val_metrics = training.pass_epoch(
+                model, loss_fn, val_loader,
+                batch_metrics=metrics, show_running=True, device=device,
+                writer=writer
+            )
+
+        writer.close()
+
+        return model        
         
+def get_embeddings(model, dataloader):
+    model.eval()
+    embeddings = torch.tensor([])
+    
+    for idx, batch in tqdm(enumerate(dataloader), total=len(dataloader)):
+        imgs, batch_labels = batch
+        batch_embeddings = model(imgs.to(device)).detach()
+        
+        if not embeddings.numel():
+            embeddings = batch_embeddings
+            labels = batch_labels
+        else:
+            embeddings = torch.cat([embeddings, batch_embeddings])
+            labels = torch.cat([labels, batch_labels])
+        
+        del batch_embeddings, batch_labels
+    
+    return embeddings.cpu(), labels.cpu()
+                           
+def get_embeddings_and_file_names(model, data_loader, embeddings_path='', labels_path='', save_tensors=True):
+    if not os.path.exists(embeddings_path) or not os.path.exists(labels_path):
+        embeddings, labels = get_embeddings(model, data_loader)
+        if save_tensors:
+            torch.save(embeddings, embeddings_path)
+            torch.save(labels, labels_path)
+    else:
+        embeddings = torch.load(embeddings_path).cpu()
+        labels = torch.load(labels_path).cpu()
+            
+    return embeddings, labels
