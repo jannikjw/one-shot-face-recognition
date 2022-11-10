@@ -33,26 +33,13 @@ class CelebADataset(Dataset):
         # Read names of images in the root directory
         image_names = os.listdir(root_dir)
 
-        self.file_label_mapping = pd.read_csv(
-            mapping_file, header=None, sep=" ", names=["file_name", "person_id"]
-        )
+        self.file_label_mapping = mapping_file
         self.root_dir = root_dir
         self.transform = transform
         self.image_names = natsorted(image_names)
 
     def __len__(self):
         return len(self.image_names)
-
-    # def __getitem__(self, idx):
-    #     # Get the path to the image
-    #     img_path = os.path.join(self.root_dir, self.image_names[idx])
-    #     # Load image and convert it to RGB
-    #     img = Image.open(img_path).convert("RGB")
-    #     # Apply transformations to the image
-    #     if self.transform:
-    #         img = self.transform(img)
-
-    #     return img, self.image_names[idx]
     
     def __getitem__(self, idx):
         # Get the path to the image
@@ -78,12 +65,11 @@ class CelebADataset(Dataset):
         if label is None:
             raise Exception('No Label found.')
         else:
-            return label - 1
+            return label
 
     def get_labels_from_file_names(self, file_names: list):
-        labels = list(map(lambda x: int(x)-1, self.file_label_mapping[
-            self.file_label_mapping["file_name"].isin(file_names)
-        ]["person_id"].tolist()))
+        labels = self.file_label_mapping[self.file_label_mapping["file_name"].isin(file_names)
+        ]["person_id"].tolist()
         if labels is None:
             raise Exception('No Labels found.')
         else:
