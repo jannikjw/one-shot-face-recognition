@@ -60,6 +60,7 @@ class CelebADataset(Dataset):
         # Load image and convert it to RGB
         img = Image.open(img_path).convert("RGB")
         # Apply transformations to the image
+        
         if self.transform:
             img = self.transform(img)
 
