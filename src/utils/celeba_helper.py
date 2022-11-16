@@ -38,7 +38,8 @@ class CelebADataset(Dataset):
 
     def __len__(self):
         return len(self.image_names)
-
+    
+    
     def __getitem__(self, idx):
         # Get the path to the image
         img_path = os.path.join(self.root_dir, self.image_names[idx])
