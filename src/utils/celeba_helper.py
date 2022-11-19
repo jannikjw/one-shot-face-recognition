@@ -36,9 +36,10 @@ class CelebADataset(Dataset):
         self.transform = transform
         self.image_names = natsorted(image_names)
 
+
     def __len__(self):
         return len(self.image_names)
-    
+
     
     def __getitem__(self, idx):
         # Get the path to the image
@@ -250,7 +251,7 @@ def get_embeddings_and_file_names(model, data_loader, embeddings_path='', labels
         labels = torch.load(labels_path).cpu()
             
     return embeddings, labels
-        
+
 
 # Vikram
 class CelebADatasetTriplet(CelebADataset):
