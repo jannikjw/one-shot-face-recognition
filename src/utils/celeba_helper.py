@@ -162,16 +162,6 @@ def save_file_names(file_names: list, destination_path: str):
             # write each item on a new line
             fp.write("%s\n" % item)
         print("Done")
-
-def get_train_files_for_max_img_per_person(file_label_mapping, max_img_pp):
-    '''
-    Returns a list of file names for the training set with at most max_img_pp images per person.
-    '''
-    flm = pd.DataFrame.copy(file_label_mapping)
-    flm = flm.sort_values(['person_id', 'file_name'])
-    flm['cumcount'] = flm.groupby('person_id').cumcount()
-    flm_img_pp = flm[flm['cumcount'] < max_img_pp]
-    return flm_img_pp['file_name'].values
         
 
 # Vikram
