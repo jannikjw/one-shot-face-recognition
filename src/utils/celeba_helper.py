@@ -50,23 +50,31 @@ class CelebADataset(Dataset):
         if self.transform:
             img = self.transform(img)
 
-        return img, self.image_names[idx]
+        target = self.get_label_from_file_name(self.image_names[idx])
+
+        return img, target
 
     def get_file_label_mapping(self):
         return self.file_label_mapping
 
     def get_label_from_file_name(self, file_name):
-        return self.file_label_mapping[
+        label = self.file_label_mapping[
             self.file_label_mapping["file_name"] == file_name
         ]["person_id"].values[0]
+        if label is None:
+            raise Exception('No Label found.')
+        else:
+            return label - 1
 
     def get_labels_from_file_names(self, file_names: list):
-        labels = self.file_label_mapping[
+        labels = list(map(lambda x: int(x)-1, self.file_label_mapping[
             self.file_label_mapping["file_name"].isin(file_names)
-        ]["person_id"].values
-        print(f"Number of people in dataset: {len(np.unique(labels))}")
-        return labels
-
+        ]["person_id"].tolist()))
+        if labels is None:
+            raise Exception('No Labels found.')
+        else:
+            print(f"Number of people in dataset: {len(np.unique(labels))}")
+            return labels
 
 class CelebAClassifier:
     def __init__(self, celeba_dataloader: DataLoader, detection_model, embedding_model):
@@ -80,41 +88,35 @@ class CelebAClassifier:
         self.detection_model = detection_model
         self.embedding_model = embedding_model
 
-    def predict(self, test_embeddings: tensor, train_embeddings: tensor, anchor_file_names: list, function: str = "norm_2"): #type: ignore
+    def predict(self, test_embeddings: tensor, train_embeddings: tensor, train_labels:list, function: str = "norm_2"): #type: ignore
         """
         Calculate distance for the test dataset and calculate accuracy
         """
-        print(f'Calculating the {function} metric...')
-        n = len(test_embeddings)
+
         predictions = []
         predictions_files = []
         closest_image_file_name = ""
 
-        for idx, test_embedding in tqdm(enumerate(test_embeddings)):
+        for test_embedding in tqdm(test_embeddings):
             if function == "cosine_similarity":
-                closest_image_file_name = anchor_file_names[
+                predicted_person_id = train_labels[
                     cosine_similarity(test_embedding, train_embeddings)
                 ]
             elif function == "norm_2":
-                closest_image_file_name = anchor_file_names[
+                predicted_person_id = train_labels[
                     min_norm_2(test_embedding, train_embeddings)
                 ]
             elif function == "norm_2_squared":
-                closest_image_file_name = anchor_file_names[
+                predicted_person_id = train_labels[
                     min_norm_2_squared(test_embedding, train_embeddings)
                 ]
 
-            predicted_person_id = self.dataset.get_label_from_file_name(
-                closest_image_file_name
-            )
-
             predictions.append(predicted_person_id)
-            predictions_files.append(closest_image_file_name)
-            
-        return predictions, predictions_files
+
+        return predictions
 
 
-    def load_data_specific_images(self, files_to_load: list):
+    def load_data_specific_images(self, files_to_load: list): #TODO: Delete function as you can use SubsetRandomSampler instead
         """
         Load data and create embeddings.
         """
@@ -123,7 +125,7 @@ class CelebAClassifier:
         count = 0
         face_file_names = []
 
-        for file_name in tqdm(files_to_load):
+        for file_name in files_to_load:
             count += 1
             img = Image.open(f"{self.dataset.root_dir}/{file_name}")
             aligned, _ = self.detection_model(img, return_prob=True)
@@ -141,6 +143,9 @@ class CelebAClassifier:
                     embeddings = batch_embeddings
                 else:
                     embeddings = torch.cat([embeddings, batch_embeddings])
+
+                if count % 100 == 0:
+                    print(f"Images loaded: {count} / {len(files_to_load)}")
             else:
                 no_face_detected.append(file_name)
 
@@ -157,7 +162,7 @@ def save_file_names(file_names: list, destination_path: str):
             # write each item on a new line
             fp.write("%s\n" % item)
         print("Done")
-
+        
 
 # Vikram
 class CelebADatasetTriplet(CelebADataset):
@@ -254,4 +259,3 @@ class CelebADatasetTriplet(CelebADataset):
         else:
             anchor, anchor_label, anchor_name = self.get_image_label(idx, get_train=False)
             return anchor, anchor_label
-
