@@ -38,9 +38,11 @@ class CelebADataset(Dataset):
         self.transform = transform
         self.image_names = natsorted(image_names)
 
+
     def __len__(self):
         return len(self.image_names)
 
+    
     def __getitem__(self, idx):
         # Get the path to the image
         img_path = os.path.join(self.root_dir, self.image_names[idx])
@@ -53,9 +55,8 @@ class CelebADataset(Dataset):
         target = self.get_label_from_file_name(self.image_names[idx])
 
         return img, target
+    
 
-    def get_file_label_mapping(self):
-        return self.file_label_mapping
 
     def get_label_from_file_name(self, file_name):
         label = self.file_label_mapping[
@@ -75,6 +76,72 @@ class CelebADataset(Dataset):
         else:
             print(f"Number of people in dataset: {len(np.unique(labels))}")
             return labels
+     
+    
+    def create_X_or_less_shot_dataset(self, max_img_pp):
+        '''
+        Returns a list of file names for the training set with at most max_img_pp images per person.
+        '''
+        flm = pd.DataFrame.copy(self.file_label_mapping)
+        flm = flm.sort_values(['person_id', 'file_name'])
+        flm['cumcount'] = flm.groupby('person_id').cumcount()
+        flm_img_pp = flm[flm['cumcount'] < max_img_pp]
+        files = flm_img_pp['file_name'].values
+        labels = flm_img_pp['person_id'].values
+        return files, labels
+    
+    
+    def create_X_shot_dataset(self, img_pp):
+        """
+        Select X images per person for train_files. 
+        If a person does not have at least X images in total dataset, disregard them.
+        Important: Files are always selected in order of [person_id, 'file_name']. 
+        """
+        flm = pd.DataFrame.copy(self.file_label_mapping)
+        flm['count'] = flm.groupby('person_id')['person_id'].transform('size') # Add column with number of occurences of each person
+        flm = flm[flm['count'] >= img_pp] # Need to have at least 2 images for a person (2 go into train set)
+        flm = flm.sort_values(['person_id', 'file_name']) # Sort
+        flm['cumcount'] = flm.groupby('person_id').cumcount() # Add column with cumulative count
+        flm = flm[flm['cumcount'] < img_pp] # Filter the first two images of each person for train set
+        files = flm['file_name'].values
+        labels = flm['person_id'].values
+
+        return files, labels
+    
+    
+    def find_positive_observations(self, X, y, df, sample=False, num_examples=5):
+        """Find the positive observations in the supplied dataset for each observation in X 
+        and adds features and labels to X and y, respectively.
+
+        Args:
+            X (tensor): Features of images. Shape: [batch_size, channels, width, height]
+            y (tensor): Labels: Shape: [batch_size]
+            df (pd.DataFrame): Dataframe that contains mapping of file IDs and labels ('person_id')
+
+        Returns:
+            (tensor, tensor): _description_
+        """
+
+        pos_obs_idx = np.array([], dtype=int)
+        for anchor in np.unique(y):
+            # get file_ids of all positive examples for anchor 
+            # positive examples in dataframe
+            pos_examples = df[df['person_id']==int(anchor)]['file_id'].values        
+
+            if sample and len(pos_examples)!=0:
+                pos_examples = np.random.choice(pos_examples, size=num_examples)
+
+            pos_obs_idx = np.hstack([pos_obs_idx, pos_examples])
+
+        for pos_obs in pos_obs_idx:
+            # get image and label of positive example
+            pos_img, pos_label = self[pos_obs]
+            # add to batch
+            X = torch.cat((X, torch.unsqueeze(pos_img, 0)), dim=0)
+            y = torch.cat((y, torch.tensor([pos_label])), dim=0)
+
+        return X, y
+
 
 class CelebAClassifier:
     def __init__(self, celeba_dataloader: DataLoader, detection_model, embedding_model):
@@ -156,13 +223,36 @@ class CelebAClassifier:
 
         return embeddings, face_file_names
 
-def save_file_names(file_names: list, destination_path: str):
-    with open(destination_path, "w") as fp:
-        for item in file_names:
-            # write each item on a new line
-            fp.write("%s\n" % item)
-        print("Done")
-
+def get_embeddings(model, dataloader):
+    model.eval()
+    embeddings = torch.tensor([])
+    
+    for idx, batch in tqdm(enumerate(dataloader), total=len(dataloader)):
+        imgs, batch_labels = batch
+        batch_embeddings = model(imgs.to(device)).detach()
+        
+        if not embeddings.numel():
+            embeddings = batch_embeddings
+            labels = batch_labels
+        else:
+            embeddings = torch.cat([embeddings, batch_embeddings])
+            labels = torch.cat([labels, batch_labels])
+        
+        del batch_embeddings, batch_labels
+    
+    return embeddings.cpu(), labels.cpu()
+                           
+def get_embeddings_and_file_names(model, data_loader, embeddings_path='', labels_path='', save_tensors=True):
+    if not os.path.exists(embeddings_path) or not os.path.exists(labels_path):
+        embeddings, labels = get_embeddings(model, data_loader)
+        if save_tensors:
+            torch.save(embeddings, embeddings_path)
+            torch.save(labels, labels_path)
+    else:
+        embeddings = torch.load(embeddings_path).cpu()
+        labels = torch.load(labels_path).cpu()
+            
+    return embeddings, labels
 
 # Vikram
 class CelebADatasetTriplet(CelebADataset):
