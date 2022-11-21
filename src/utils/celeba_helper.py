@@ -162,7 +162,7 @@ def save_file_names(file_names: list, destination_path: str):
             # write each item on a new line
             fp.write("%s\n" % item)
         print("Done")
-        
+
 
 # Vikram
 class CelebADatasetTriplet(CelebADataset):
@@ -209,14 +209,14 @@ class CelebADatasetTriplet(CelebADataset):
         if get_train:
             assert idx < len(self.train_image_names), "Index is out of range for train dataset"
             filename = self.train_image_names.loc[idx]
-            
+
         else:
             if idx >= len(self.test_image_names):
                 print(idx)
             assert idx < len(self.test_image_names), "Index is out of range for test dataset"
             filename = self.test_image_names.loc[idx]
-        
-        
+
+
         img_path = os.path.join(self.root_dir, filename)
         # Load image and convert it to RGB
         try:
