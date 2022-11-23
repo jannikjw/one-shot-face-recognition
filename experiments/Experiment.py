@@ -185,23 +185,18 @@ class Experiment:
         return img
 
     @staticmethod
-    def create_embeddings(folder, label_file, model, transform):
-        label_file_dict = {}
+    def create_embeddings(dataloader, model, transform):
         gt_labels = []
-        with open(label_file, 'r') as r_file:
-            for file in r_file:
-                file = file.strip("\n").split(" ")
-                if file[0] not in label_file_dict:
-                    label_file_dict[file[0]] = file[1]
+        embeddings = torch.tensor([])
+        
+        for i, (X, y, _) in enumerate(dataloader):
+            img = X # Gives use the images
 
-        embeddings = torch.empty(len(label_file_dict), 512)
-        for i, file in enumerate(label_file_dict.keys()):
-            img = Experiment.load_image(os.path.join(folder, file), transform)
+            img_emb = model(img) # img is a batch of images
 
-            img_emb = model(img[None, :])
+            embeddings = torch.cat([embeddings, img_emb]) 
 
-            embeddings[i] = img_emb
-            gt_labels.append(label_file_dict[file])
+            gt_labels.extend(y) # extend the labels
 
         return embeddings, gt_labels
 
@@ -251,7 +246,7 @@ class Experiment:
 
         for epoch in tqdm(range(self.config.train.epochs), desc="Epochs", leave=True): #TODO: Make sure this works in class structure
             running_loss = []
-            for step, (X,y) in enumerate(tqdm(self.train_loader, desc='Current Batch', leave=True)):
+            for step, (X,y,file_names) in enumerate(tqdm(self.train_loader, desc='Current Batch', leave=True)):
                 loss = self._train_step(X, y, self.train_df)
                 running_loss.append(loss.cpu().detach().numpy())
 
@@ -281,63 +276,53 @@ class Experiment:
         self.model.eval().to(self.device)
 
         # TODO: Computing train embeddings and saving them
-        # train_embeddings, train_labels = Experiment.create_embeddings(
-        #     folder=self.dataset.root_dir,
-        #     model = self.model,
-        #     transform=self.transform,
-        #     label_file=self.dataset.mapping_file_path
-        # )
+        train_embeddings, train_labels = Experiment.create_embeddings(
+            dataloader=self.train_loader,
+            model = self.model,
+            transform=self.transform,
+        )
 
-        # train_embeddings_file_name = os.path.join(self.embeddings_folder_name, 'train_embeddings.pickle')
-        # train_labels_file_name = os.path.join(self.embeddings_folder_name, 'train_labels.pickle')
+        train_embeddings_file_name = os.path.join(self.embeddings_folder_name, 'train_embeddings.pickle')
+        train_labels_file_name = os.path.join(self.embeddings_folder_name, 'train_labels.pickle')
 
-        # torch.save(train_embeddings, train_embeddings_file_name)
-        # torch.save(train_labels, train_labels_file_name)
+        torch.save(train_embeddings, train_embeddings_file_name)
+        torch.save(train_labels, train_labels_file_name)
 
         # TODO: Saving the vault embeddings and labels
-        # vault_embeddings, vault_labels = Experiment.create_embeddings(
-        #     celeba_dataloader=self.vault_loader,
-        #     model = self.model
-        # )
+        vault_embeddings, vault_labels = Experiment.create_embeddings(
+            dataloader=self.vault_loader,
+            model = self.model,
+            transform=self.transform
+        )
 
-        # vault_embeddings_file_name = os.path.join(self.embeddings_folder_name, 'vault_embeddings.pickle')
-        # vault_labels_file_name = os.path.join(self.embeddings_folder_name, 'vault_labels.pickle')
+        vault_embeddings_file_name = os.path.join(self.embeddings_folder_name, 'vault_embeddings.pickle')
+        vault_labels_file_name = os.path.join(self.embeddings_folder_name, 'vault_labels.pickle')
 
-        # torch.save(vault_embeddings, vault_embeddings_file_name)
-        # torch.save(vault_labels, vault_labels_file_name)
+        torch.save(vault_embeddings, vault_embeddings_file_name)
+        torch.save(vault_labels, vault_labels_file_name)
 
         # TODO: Saving the test embeddings and label
-        # test_embeddings, test_labels = Experiment.create_embeddings(
-        #     folder=self.test_loader,
-        #     model = self.model,
-        #     transform=self.transform,
-        # )
+        test_embeddings, test_labels = Experiment.create_embeddings(
+            dataloader=self.test_loader,
+            model = self.model,
+            transform=self.transform,
+        )
 
-        # test_embeddings_file_name = os.path.join(self.embeddings_folder_name, 'test_embeddings.pickle')
-        # test_labels_file_name = os.path.join(self.embeddings_folder_name, 'test_labels.pickle')
+        test_embeddings_file_name = os.path.join(self.embeddings_folder_name, 'test_embeddings.pickle')
+        test_labels_file_name = os.path.join(self.embeddings_folder_name, 'test_labels.pickle')
 
-        # torch.save(test_embeddings, test_embeddings_file_name)
-        # torch.save(test_labels, test_labels_file_name)
-       
-        # TODO: Storing the training accuracy
-        # train_accuracy = self.evaluate(self, train_embeddings, train_labels, test_embeddings, test_labels)
-        
-        # with open(self.model_data_file_name, 'r') as model_data:
-        #     json_data = json.load(model_data)
-        # json_data['training_accuracy'] = train_accuracy
-
-        # with open(self.model_data_file_name, 'w') as model_data:
-        #     json.dump(json_data, model_data)
+        torch.save(test_embeddings, test_embeddings_file_name)
+        torch.save(test_labels, test_labels_file_name)
         
         # TODO: Storing Test Accuracy
-        # test_accuracy = self.evaluate(self, train_embeddings, train_labels, test_embeddings, test_labels)
+        test_accuracy = self.evaluate(self, train_embeddings, train_labels, test_embeddings, test_labels)
 
-        # with open(self.model_data_file_name, 'r') as model_data:
-        #     json_data = json.load(model_data)
-        # json_data['test_accuracy'] = test_accuracy
+        with open(self.model_data_file_name, 'r') as model_data:
+            json_data = json.load(model_data)
+        json_data['test_accuracy'] = test_accuracy
 
-        # with open(self.model_data_file_name, 'w') as model_data:
-        #     json.dump(json_data, model_data)
+        with open(self.model_data_file_name, 'w') as model_data:
+            json.dump(json_data, model_data)
 
     
     def evaluate(self, train_embeddings, train_labels, test_embeddings, test_labels):
