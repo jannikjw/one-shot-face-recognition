@@ -1,17 +1,22 @@
+import torch
 CFG = {
     "data": {
-        "path": "",
+        "img_folder": "one-shot-face-recognition/data/img_align_celeba", # if using MTCNN, change file path to one-shot-face-recognition/data/img_align_celeba_mtcnn
+        "mapping_file": "one-shot-face-recognition/data/identity_CelebA.txt",
         "image_size": 160,
         "use_full_train_data": False,
         "train_img_pp": 2,
     },
     "train": {
-        "uses_MTCNN": True,
+        "uses_MTCNN": False,
         "uses_augmentation": False,
         "uses_GAN": False,
         "is_finetuning": False,
         "is_feature_extracting": False,
-        "batch_size": 128,
+        "device": 'cpu', # 'cuda:0'
+        "num_workers": 2, # 0 if cuda:0
+        "pin_memory": False, # True if cuda:0
+        "batch_size": 10,
         "buffer_size": 1000,
         "epochs": 20,
         "optimizer": {
