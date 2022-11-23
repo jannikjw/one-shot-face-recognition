@@ -240,6 +240,15 @@ class Experiment:
 
     def train(self):
         """Determine training routine, select which layers should be trained, and fit the model."""
+        
+        # Loading Data
+        self.load_data()
+        train_inds, test_inds, vault_inds = self._create_train_test_split()
+        self._load_image_train(train_inds)
+        self._load_image_test(test_inds)
+        self._load_image_vault(vault_inds)
+
+        # Model in training mode
         self.model.train()
 
         mean_train_loss_per_epoch = []
