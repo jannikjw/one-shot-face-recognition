@@ -17,6 +17,38 @@ from src.utils.similarity_functions import (
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+class CelebA_MTCNN_Helper(Dataset):
+    def __init__(self, root_dir, mapping_file: str, transform=None):
+        """
+        Args:
+          root_dir (string): Directory with all the images
+          mapping_file (string): File path to mapping file from image to person
+          transform (callable, optional): transform to be applied to each image sample
+        """
+        # Read names of images in the root directory
+        image_names = os.listdir(root_dir)
+
+        self.file_label_mapping = pd.read_csv(
+            mapping_file, header=None, sep=" ", names=["file_name", "person_id"]
+        )
+        self.root_dir = root_dir
+        self.transform = transform
+        self.image_names = natsorted(image_names)
+
+    def __len__(self):
+        return len(self.image_names)
+
+    def __getitem__(self, idx):
+        # Get the path to the image
+        img_path = os.path.join(self.root_dir, self.image_names[idx])
+        # Load image and convert it to RGB
+        img = Image.open(img_path).convert("RGB")
+        # Apply transformations to the image
+        if self.transform:
+            img = self.transform(img)
+
+        return img, self.image_names[idx]
+
 
 class CelebADataset(Dataset):
     def __init__(self, root_dir, mapping_file: str, transform=None):
