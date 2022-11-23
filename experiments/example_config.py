@@ -1,4 +1,3 @@
-import torch
 CFG = {
     "data": {
         "img_folder": "one-shot-face-recognition/data/img_align_celeba", # if using MTCNN, change file path to one-shot-face-recognition/data/img_align_celeba_mtcnn

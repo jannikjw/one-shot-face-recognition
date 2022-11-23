@@ -65,6 +65,7 @@ class CelebADataset(Dataset):
             mapping_file, header=None, sep=" ", names=["file_name", "person_id"]
         )
         self.root_dir = root_dir
+        self.mapping_file_path = mapping_file
         self.transform = transform
         self.image_names = natsorted(image_names)
 
