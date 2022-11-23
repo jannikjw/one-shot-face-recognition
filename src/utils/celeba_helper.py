@@ -42,7 +42,7 @@ class CelebADataset(Dataset):
     def __len__(self):
         return len(self.image_names)
 
-    
+
     def __getitem__(self, idx):
         # Get the path to the image
         img_path = os.path.join(self.root_dir, self.image_names[idx])
@@ -55,7 +55,6 @@ class CelebADataset(Dataset):
         target = self.get_label_from_file_name(self.image_names[idx])
 
         return img, target
-    
 
 
     def get_label_from_file_name(self, file_name):
@@ -67,6 +66,7 @@ class CelebADataset(Dataset):
         else:
             return label - 1
 
+
     def get_labels_from_file_names(self, file_names: list):
         labels = list(map(lambda x: int(x)-1, self.file_label_mapping[
             self.file_label_mapping["file_name"].isin(file_names)
@@ -76,8 +76,8 @@ class CelebADataset(Dataset):
         else:
             print(f"Number of people in dataset: {len(np.unique(labels))}")
             return labels
-     
-    
+
+
     def create_X_or_less_shot_dataset(self, max_img_pp):
         '''
         Returns a list of file names for the training set with at most max_img_pp images per person.
@@ -89,8 +89,8 @@ class CelebADataset(Dataset):
         files = flm_img_pp['file_name'].values
         labels = flm_img_pp['person_id'].values
         return files, labels
-    
-    
+
+
     def create_X_shot_dataset(self, img_pp):
         """
         Select X images per person for train_files. 
@@ -107,17 +107,15 @@ class CelebADataset(Dataset):
         labels = flm['person_id'].values
 
         return files, labels
-    
-    
+
+
     def find_positive_observations(self, X, y, df, sample=False, num_examples=5):
         """Find the positive observations in the supplied dataset for each observation in X 
         and adds features and labels to X and y, respectively.
-
         Args:
             X (tensor): Features of images. Shape: [batch_size, channels, width, height]
             y (tensor): Labels: Shape: [batch_size]
             df (pd.DataFrame): Dataframe that contains mapping of file IDs and labels ('person_id')
-
         Returns:
             (tensor, tensor): _description_
         """
@@ -226,22 +224,22 @@ class CelebAClassifier:
 def get_embeddings(model, dataloader):
     model.eval()
     embeddings = torch.tensor([])
-    
+
     for idx, batch in tqdm(enumerate(dataloader), total=len(dataloader)):
         imgs, batch_labels = batch
         batch_embeddings = model(imgs.to(device)).detach()
-        
+
         if not embeddings.numel():
             embeddings = batch_embeddings
             labels = batch_labels
         else:
             embeddings = torch.cat([embeddings, batch_embeddings])
             labels = torch.cat([labels, batch_labels])
-        
+
         del batch_embeddings, batch_labels
-    
+
     return embeddings.cpu(), labels.cpu()
-                           
+
 def get_embeddings_and_file_names(model, data_loader, embeddings_path='', labels_path='', save_tensors=True):
     if not os.path.exists(embeddings_path) or not os.path.exists(labels_path):
         embeddings, labels = get_embeddings(model, data_loader)
@@ -251,7 +249,7 @@ def get_embeddings_and_file_names(model, data_loader, embeddings_path='', labels
     else:
         embeddings = torch.load(embeddings_path).cpu()
         labels = torch.load(labels_path).cpu()
-            
+
     return embeddings, labels
 
 # Vikram
