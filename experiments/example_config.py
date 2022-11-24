@@ -11,16 +11,16 @@ CFG = {
         "uses_augmentation": False,
         "uses_GAN": False,
         "is_finetuning": False,
-        "is_feature_extracting": False,
+        "is_feature_extracting": True,
         "device": 'cpu', # 'cuda:0'
         "num_workers": 2, # 0 if cuda:0
         "pin_memory": False, # True if cuda:0
-        "batch_size": 10,
+        "batch_size": 128,
         "buffer_size": 1000,
-        "epochs": 20,
+        "epochs": 1,
         "optimizer": {
             "type": "adam",
-            "lr": 0.1,
+            "lr": 0.01,
             "schedule": [25, 50, 75, 85],
         },
         "metrics": ["accuracy", "loss"]
@@ -30,7 +30,7 @@ CFG = {
     },
     "model": {
         "model_type": "InceptionResNetv1",
-        "model_weights": "vgg-face2",
+        "model_weights": "vggface2",
         "margin": 0.5,
         "gamma": 0.1,
         "loss": "TripletLoss",

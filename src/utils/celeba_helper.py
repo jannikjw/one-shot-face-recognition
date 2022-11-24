@@ -157,7 +157,8 @@ class CelebADataset(Dataset):
         for anchor in np.unique(y):
             # get file_ids of all positive examples for anchor 
             # positive examples in dataframe
-            pos_examples = df[df['person_id']==int(anchor)]['file_id'].values        
+            #pos_examples = df[df['person_id']==int(anchor)]['file_id'].values        
+            pos_examples = df[df['person_id']==int(anchor)].index.values
 
             if sample and len(pos_examples)!=0:
                 pos_examples = np.random.choice(pos_examples, size=num_examples)
@@ -166,7 +167,9 @@ class CelebADataset(Dataset):
 
         for pos_obs in pos_obs_idx:
             # get image and label of positive example
-            pos_img, pos_label = self[pos_obs]
+            #pos_img, pos_label = self[pos_obs]
+            pos_img, pos_label, _ = self[pos_obs]
+
             # add to batch
             X = torch.cat((X, torch.unsqueeze(pos_img, 0)), dim=0)
             y = torch.cat((y, torch.tensor([pos_label])), dim=0)

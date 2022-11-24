@@ -44,15 +44,17 @@ class Experiment:
 
         # Create the folder for the experiment inside the weights folder
         self.weights_folder_name = f"weights/{self.folder_name}"
-        os.mkdir(self.weights_folder_name)   
+        if not os.path.exists(self.weights_folder_name):
+            os.mkdir(self.weights_folder_name)   
 
         # Create the folder for the experiment inside the embeddings folder
         self.embeddings_folder_name = f"embeddings/{self.folder_name}"
-        os.mkdir(self.embeddings_folder_name)
+        if not os.path.exists(self.embeddings_folder_name):
+            os.mkdir(self.embeddings_folder_name)
 
         # Create the file to store all the model information
         self.model_data_file_name = f"model_data/{self.folder_name}.json"
-        json_data = {"config": self.config}
+        json_data = {"config": 'first experiment'}#self.config}
         with open(self.model_data_file_name, 'w') as model_data:
             json.dump(json_data, model_data)
 
@@ -202,10 +204,9 @@ class Experiment:
 
     def build(self):
         """Create model."""
+        print('in build function')
         self.model = InceptionResnetV1(
-            pretrained=self.config.model.model_weights,
-            classify=False
-        ).to(self.device)
+            pretrained=self.config.model.model_weights).to(self.device)
 
         # Feature Extracting is freezing all the layers except the last one
         # Fine Tuning is freezing nothing at all.
@@ -223,8 +224,9 @@ class Experiment:
         )
 
     def _train_step(self, X, y, train_df):
+        print('in train step')
         X, y = self.dataset.find_positive_observations(X, y, train_df) #TODO: Make sure it works in class structure
-
+        print('passed positive observations')
         # Create embeddings
         X_emb = self.model(X.to(self.device))
         
@@ -235,12 +237,12 @@ class Experiment:
         loss.backward()
         
         self.optimizer.step()
-        
+        print('returning loss')
         return loss
 
     def train(self):
         """Determine training routine, select which layers should be trained, and fit the model."""
-        
+        print('inside train function')
         # Loading Data
         self.load_data()
         train_inds, test_inds, vault_inds = self._create_train_test_split()
@@ -248,16 +250,21 @@ class Experiment:
         self._load_image_test(test_inds)
         self._load_image_vault(vault_inds)
 
+        # Build Model
+        self.build()
+        print('got through build function')
         # Model in training mode
         self.model.train()
-
+        print('start training')
         mean_train_loss_per_epoch = []
 
         for epoch in tqdm(range(self.config.train.epochs), desc="Epochs", leave=True): #TODO: Make sure this works in class structure
             running_loss = []
+            print(epoch)
             for step, (X,y,file_names) in enumerate(tqdm(self.train_loader, desc='Current Batch', leave=True)):
                 loss = self._train_step(X, y, self.train_df)
                 running_loss.append(loss.cpu().detach().numpy())
+
 
             # Append the train loss
             mean_train_loss_per_epoch.append(np.mean(running_loss))
@@ -267,6 +274,10 @@ class Experiment:
                 json_data = json.load(model_data)
             
             # TODO: make sure there's an array first
+            is_training_losses_present = json_data.get("training_losses", False)
+            if not is_training_losses_present: 
+                json_data['training_losses'] = []
+
             json_data['training_losses'].append(np.mean(running_loss))
             
             with open(self.model_data_file_name, 'w') as model_data:
