@@ -20,19 +20,21 @@ class Experiment:
         # self.device = torch.device(self.config.train.device)
         # Dynamically change the device based on the system
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        
+        p_dir = 'one-shot-face-recognition/' # parent directory (github repo name)
 
         # Also initialize the directory structure
-        if not os.path.exists('data'):
-            os.mkdir("data") # This is the folder for training data
+        if not os.path.exists(p_dir+'data'):
+            os.mkdir(p_dir+"data") # This is the folder for training data
         
-        if not os.path.exists('embeddings'):
-            os.mkdir('embeddings') # This is the folder for the embeddings
+        if not os.path.exists(p_dir+'embeddings'):
+            os.mkdir(p_dir+'embeddings') # This is the folder for the embeddings
         
-        if not os.path.exists('weights'):
-            os.mkdir('weights') # This is the folder for the embeddings
+        if not os.path.exists(p_dir+'weights'):
+            os.mkdir(p_dir+'weights') # This is the folder for the embeddings
 
-        if not os.path.exists('model_data'):
-            os.mkdir('model_data') # This is the folder for all the model related data
+        if not os.path.exists(p_dir+'model_data'):
+            os.mkdir(p_dir+'model_data') # This is the folder for all the model related data
 
         # For the current experiment, we create a separate folder inside mode
         self.folder_name = 'BASELINE'
@@ -43,18 +45,18 @@ class Experiment:
         self.folder_name += '_MTCNN' if self.config.train.uses_MTCNN else ''
 
         # Create the folder for the experiment inside the weights folder
-        self.weights_folder_name = f"weights/{self.folder_name}"
+        self.weights_folder_name = f"{p_dir}weights/{self.folder_name}"
         if not os.path.exists(self.weights_folder_name):
             os.mkdir(self.weights_folder_name)   
 
         # Create the folder for the experiment inside the embeddings folder
-        self.embeddings_folder_name = f"embeddings/{self.folder_name}"
+        self.embeddings_folder_name = f"{p_dir}embeddings/{self.folder_name}"
         if not os.path.exists(self.embeddings_folder_name):
             os.mkdir(self.embeddings_folder_name)
 
         # Create the file to store all the model information
-        self.model_data_file_name = f"model_data/{self.folder_name}.json"
-        json_data = {"config": 'first experiment'}#self.config}
+        self.model_data_file_name = f"{p_dir}model_data/{self.folder_name}.json"
+        json_data = {"config": cfg}
         with open(self.model_data_file_name, 'w') as model_data:
             json.dump(json_data, model_data)
 
@@ -96,38 +98,93 @@ class Experiment:
         
         return transform
     
+    def _train_test_helper(self, file_label_mapping):
+        """
+        Helper Function for Splitting Train & Test
+        Goal: Test Set should be the same no matter the experiment run
+        """
+        # get first file for each person (this will be in train set) 10,177 images
+        first_img_file = file_label_mapping.drop_duplicates(subset='person_id', keep='first', inplace=False, ignore_index=False)
+        rest = file_label_mapping.drop(first_img_file.index, axis=0, inplace=False)
+
+        # get second file for each person (this will be in test set) 10,133 images
+        second_img_file = rest.drop_duplicates(subset='person_id', keep='first', inplace=False, ignore_index=False) 
+        rest.drop(second_img_file.index, axis=0, inplace=True)
+
+        # sample the remaining images for the test set to reach 35,000 total images
+        test_sample = rest.sample(n=35000-len(second_img_file), random_state=42)
+        rest.drop(test_sample.index, axis=0, inplace=True)
+
+        return first_img_file, second_img_file, test_sample, rest
+    
     def _create_train_test_split(self):
         """
         Unified Train/Test for Experiments
         Train Set: 167,599 images of 10,177 unique ppl
         Test Set: 35,000 images of 10,133 unique ppl
 
-        Returns the indices of the train and test images in the full celeba dataset
+        Returns the indices of the train and test images (same for all experiments) in the full celeba dataset and the vault inds (same for all experiments)
         """
+        
         file_label_mapping = self.dataset.file_label_mapping
 
-        # TODO: NEED TO FIX THIS FOR GAN DATASET
+        if self.config.train.uses_GAN:
+            print('using GAN Aug Images')
+            # get the images from the original celeba dataset which all have filenames of length 10 ['000001.jpg' to '202599.jpg']
+            orig_celeba = file_label_mapping.loc[file_label_mapping['file_name'].str.len() == 10]
+
+            first_img_file, second_img_file, test_sample, rest = self._train_test_helper(orig_celeba)
+
+            # get the GAN generated images (these will all go in train to keep test set same for all experiments)
+            gan_imgs = file_label_mapping.drop(orig_celeba.index, axis=0, inplace=False)
+
+            # create train df
+            self.train_df = pd.concat([first_img_file, rest, gan_imgs]) # add GAN generated images to train set
+        else:
+            print('GAN is False')
+            first_img_file, second_img_file, test_sample, rest = self._train_test_helper(file_label_mapping)
+            
+             # create train df
+            self.train_df = pd.concat([first_img_file, rest])
+
+        # create test df (same for all experiments)
+        self.test_df = pd.concat([second_img_file, test_sample])
+
+        print(f'Train Set is: {len(self.train_df)} and Test Set is: {len(self.test_df)}')
         
-        # get first file for each person (this will be in train set)
-        first_img_file = file_label_mapping.drop_duplicates(subset='person_id', keep='first', inplace=False, ignore_index=False) # 10,177 images
-        # define these first file images as the vault images that will be used for inference for any experiment
+        train_inds = self.train_df.index.tolist()
+        test_inds = self.test_df.index.tolist()
+        # define the first file images as the vault images that will be used for inference (same for all experiments)
+        vault_inds = first_img_file.index.tolist()
+
+        return train_inds, test_inds, vault_inds
+    
+    def reduced_dataset_exp(self):
+        """
+        Testing Experiments.py on a smaller dataset to see if it runs properly
+        Train: 30,000 images
+        TestL 20,000 images
+        """
+        print('in small celeba dataset')
+        file_label_mapping = self.dataset.file_label_mapping
+        first_img_file = file_label_mapping.drop_duplicates(subset='person_id', keep='first', inplace=False, ignore_index=False)
         vault_inds = first_img_file.index.tolist()
         rest = file_label_mapping.drop(first_img_file.index, axis=0, inplace=False)
-        
-        # get second file for each person (this will be in test set)
         second_img_file = rest.drop_duplicates(subset='person_id', keep='first', inplace=False, ignore_index=False) # 10,133 images
         rest.drop(second_img_file.index, axis=0, inplace=True)
-        
-        # sample the remaining images for the test set to reach 35,000 total images
-        test_sample = rest.sample(n=35000-len(second_img_file), random_state=42)
+        test_sample = rest.sample(n=20000-len(second_img_file), random_state=42)
         rest.drop(test_sample.index, axis=0, inplace=True)
 
-        self.train_df = pd.concat([first_img_file, rest])
-        self.test_df = pd.concat([second_img_file, test_sample])
+        small_train = rest.sample(n=30000-len(first_img_file), random_state=42)
+
+        self.train_df = pd.concat([first_img_file, small_train]) # 30,000 images
+        print(len(self.train_df))
+        self.test_df = pd.concat([second_img_file, test_sample]) #20,000 images
+        print(len(self.test_df))
 
         train_inds = self.train_df.index.tolist()
         test_inds = self.test_df.index.tolist()
-
+        
         return train_inds, test_inds, vault_inds
 
     def _load_image_train(self, train_inds):
@@ -245,7 +302,8 @@ class Experiment:
         print('inside train function')
         # Loading Data
         self.load_data()
-        train_inds, test_inds, vault_inds = self._create_train_test_split()
+        #train_inds, test_inds, vault_inds = self._create_train_test_split()
+        train_inds, test_inds, vault_inds = self.reduced_dataset_exp()
         self._load_image_train(train_inds)
         self._load_image_test(test_inds)
         self._load_image_vault(vault_inds)
@@ -253,14 +311,15 @@ class Experiment:
         # Build Model
         self.build()
         print('got through build function')
+        
         # Model in training mode
         self.model.train()
         print('start training')
+        
         mean_train_loss_per_epoch = []
 
         for epoch in tqdm(range(self.config.train.epochs), desc="Epochs", leave=True): #TODO: Make sure this works in class structure
             running_loss = []
-            print(epoch)
             for step, (X,y,file_names) in enumerate(tqdm(self.train_loader, desc='Current Batch', leave=True)):
                 loss = self._train_step(X, y, self.train_df)
                 running_loss.append(loss.cpu().detach().numpy())
