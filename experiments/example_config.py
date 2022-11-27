@@ -1,7 +1,7 @@
 CFG = {
     "data": {
-        "img_folder": "one-shot-face-recognition/data/img_align_celeba", # change path according to image folder dataset (mtcnn, data_aug, etc)
-        "mapping_file": "one-shot-face-recognition/data/identity_CelebA.txt", # change path for correct mapping.txt file (mtcnn, data_aug, etc)
+        "img_folder": "data/img_align_celeba", # change path according to image folder dataset (mtcnn, data_aug, etc)
+        "mapping_file": "data/identity_CelebA.txt", # change path for correct mapping.txt file (mtcnn, data_aug, etc)
         "image_size": 160
     },
     "train": {
@@ -35,9 +35,9 @@ CFG = {
 }
 
 # path for dataset + GAN
-# 'one-shot-face-recognition/data/all_images'
-# 'one-shot-face-recognition/data/identity_CelebA_all.txt'
+# 'data/all_images'
+# 'data/identity_CelebA_all.txt'
 
 # path for mtcnn dataset
-# 'one-shot-face-recognition/data/img_align_celeba_mtcnn'
-# 'one-shot-face-recognition/data/identity_CelebA.txt'
+# 'data/img_align_celeba_mtcnn'
+# 'data/identity_CelebA.txt'
