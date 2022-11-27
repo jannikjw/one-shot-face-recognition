@@ -1,15 +1,13 @@
 ## Create a custom Dataset class
 import os
 import torch
-from torch import positive, tensor
+from torch import tensor
 from torch.utils.data import Dataset, DataLoader
 from natsort import natsorted
 from PIL import Image
 import numpy as np
-import pandas as pd
-import random
 from tqdm import tqdm
-from torchvision import transforms
+import pandas as pd
 from src.utils.similarity_functions import (
     cosine_similarity,
     min_norm_2,
@@ -19,8 +17,7 @@ from src.utils.similarity_functions import (
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-
-class CelebADataset(Dataset):
+class CelebA_MTCNN_Helper(Dataset):
     def __init__(self, root_dir, mapping_file: str, transform=None):
         """
         Args:
@@ -38,11 +35,45 @@ class CelebADataset(Dataset):
         self.transform = transform
         self.image_names = natsorted(image_names)
 
+    def __len__(self):
+        return len(self.image_names)
+
+    def __getitem__(self, idx):
+        # Get the path to the image
+        img_path = os.path.join(self.root_dir, self.image_names[idx])
+        # Load image and convert it to RGB
+        img = Image.open(img_path).convert("RGB")
+        # Apply transformations to the image
+        if self.transform:
+            img = self.transform(img)
+
+        return img, self.image_names[idx]
+
+
+class CelebADataset(Dataset):
+    def __init__(self, root_dir, mapping_file: str, transform=None):
+        """
+        Args:
+          root_dir (string): Directory with all the images
+          mapping_file (string): File path to mapping file from image to person
+          transform (callable, optional): transform to be applied to each image sample
+        """
+        # Read names of images in the root directory
+        image_names = os.listdir(root_dir)
+
+        self.file_label_mapping = pd.read_csv(
+            mapping_file, header=None, sep=" ", names=["file_name", "person_id"]
+        )
+        self.root_dir = root_dir
+        self.mapping_file_path = mapping_file
+        self.transform = transform
+        self.image_names = natsorted(image_names)
+
 
     def __len__(self):
         return len(self.image_names)
 
-
+    
     def __getitem__(self, idx):
         # Get the path to the image
         img_path = os.path.join(self.root_dir, self.image_names[idx])
@@ -54,8 +85,8 @@ class CelebADataset(Dataset):
 
         target = self.get_label_from_file_name(self.image_names[idx])
 
-        return img, target
-
+        return img, target, self.image_names[idx]
+    
 
     def get_label_from_file_name(self, file_name):
         label = self.file_label_mapping[
@@ -66,7 +97,7 @@ class CelebADataset(Dataset):
         else:
             return label - 1
 
-
+        
     def get_labels_from_file_names(self, file_names: list):
         labels = list(map(lambda x: int(x)-1, self.file_label_mapping[
             self.file_label_mapping["file_name"].isin(file_names)
@@ -76,8 +107,8 @@ class CelebADataset(Dataset):
         else:
             print(f"Number of people in dataset: {len(np.unique(labels))}")
             return labels
-
-
+     
+    
     def create_X_or_less_shot_dataset(self, max_img_pp):
         '''
         Returns a list of file names for the training set with at most max_img_pp images per person.
@@ -89,8 +120,8 @@ class CelebADataset(Dataset):
         files = flm_img_pp['file_name'].values
         labels = flm_img_pp['person_id'].values
         return files, labels
-
-
+    
+    
     def create_X_shot_dataset(self, img_pp):
         """
         Select X images per person for train_files. 
@@ -107,15 +138,17 @@ class CelebADataset(Dataset):
         labels = flm['person_id'].values
 
         return files, labels
-
-
+    
+    
     def find_positive_observations(self, X, y, df, sample=False, num_examples=5):
         """Find the positive observations in the supplied dataset for each observation in X 
         and adds features and labels to X and y, respectively.
+
         Args:
             X (tensor): Features of images. Shape: [batch_size, channels, width, height]
             y (tensor): Labels: Shape: [batch_size]
             df (pd.DataFrame): Dataframe that contains mapping of file IDs and labels ('person_id')
+
         Returns:
             (tensor, tensor): _description_
         """
@@ -124,7 +157,8 @@ class CelebADataset(Dataset):
         for anchor in np.unique(y):
             # get file_ids of all positive examples for anchor 
             # positive examples in dataframe
-            pos_examples = df[df['person_id']==int(anchor)]['file_id'].values        
+            #pos_examples = df[df['person_id']==int(anchor)]['file_id'].values        
+            pos_examples = df[df['person_id']==int(anchor)].index.values
 
             if sample and len(pos_examples)!=0:
                 pos_examples = np.random.choice(pos_examples, size=num_examples)
@@ -133,7 +167,9 @@ class CelebADataset(Dataset):
 
         for pos_obs in pos_obs_idx:
             # get image and label of positive example
-            pos_img, pos_label = self[pos_obs]
+            #pos_img, pos_label = self[pos_obs]
+            pos_img, pos_label, _ = self[pos_obs]
+
             # add to batch
             X = torch.cat((X, torch.unsqueeze(pos_img, 0)), dim=0)
             y = torch.cat((y, torch.tensor([pos_label])), dim=0)
@@ -224,22 +260,22 @@ class CelebAClassifier:
 def get_embeddings(model, dataloader):
     model.eval()
     embeddings = torch.tensor([])
-
+    
     for idx, batch in tqdm(enumerate(dataloader), total=len(dataloader)):
         imgs, batch_labels = batch
         batch_embeddings = model(imgs.to(device)).detach()
-
+        
         if not embeddings.numel():
             embeddings = batch_embeddings
             labels = batch_labels
         else:
             embeddings = torch.cat([embeddings, batch_embeddings])
             labels = torch.cat([labels, batch_labels])
-
+        
         del batch_embeddings, batch_labels
-
+    
     return embeddings.cpu(), labels.cpu()
-
+                           
 def get_embeddings_and_file_names(model, data_loader, embeddings_path='', labels_path='', save_tensors=True):
     if not os.path.exists(embeddings_path) or not os.path.exists(labels_path):
         embeddings, labels = get_embeddings(model, data_loader)
@@ -249,8 +285,9 @@ def get_embeddings_and_file_names(model, data_loader, embeddings_path='', labels
     else:
         embeddings = torch.load(embeddings_path).cpu()
         labels = torch.load(labels_path).cpu()
-
+            
     return embeddings, labels
+
 
 # Vikram
 class CelebADatasetTriplet(CelebADataset):
@@ -297,20 +334,17 @@ class CelebADatasetTriplet(CelebADataset):
         if get_train:
             assert idx < len(self.train_image_names), "Index is out of range for train dataset"
             filename = self.train_image_names.loc[idx]
-
+            
         else:
             if idx >= len(self.test_image_names):
                 print(idx)
             assert idx < len(self.test_image_names), "Index is out of range for test dataset"
             filename = self.test_image_names.loc[idx]
-
-
+        
+        
         img_path = os.path.join(self.root_dir, filename)
         # Load image and convert it to RGB
-        try:
-            img = Image.open(img_path).convert("RGB")
-        except FileNotFoundError:
-            raise(f"get_train is {get_train}, idx is {idx}, image name is: {filename}")
+        img = Image.open(img_path).convert("RGB")
         # Apply transformations to the image
         if self.transform:
             img = self.transform(img)
@@ -327,17 +361,14 @@ class CelebADatasetTriplet(CelebADataset):
 
             # loading positive image
             pos_list = self.test_df["file_name"][(self.test_df["person_id"]==anchor_label)]
-            if len(pos_list) == 0:
-                positive = anchor
-            else:
-                pos_name = pos_list.sample(n=1) #random_state=42
-                pos_idx = pos_name.index[0]
+            pos_name = pos_list.sample(n=1, random_state=42)
+            pos_idx = pos_name.index[0]
 
-                positive, pos_label, pos_name = self.get_image_label(pos_idx, get_train=False)
+            positive, pos_label, pos_name = self.get_image_label(pos_idx, get_train=False)
 
             # loading negative image
             neg_list = self.test_df["file_name"][(self.test_df["person_id"]!=anchor_label)]
-            neg_name = neg_list.sample(n=1) # random_state=42
+            neg_name = neg_list.sample(n=1, random_state=42)
             neg_idx = neg_name.index[0]
 
             negative, neg_label, neg_name = self.get_image_label(neg_idx, get_train=False)
