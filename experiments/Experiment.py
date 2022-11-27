@@ -203,7 +203,7 @@ class Experiment:
     def _create_train_test_split(self):
         """"
         Train Set Size: Can change depending on initial dataset (use_GAN boolean)
-        Test Set Size: 35,000 images - same for all experiments
+        Test Set Size: 50,000 images - same for all experiments
         Vault Set Size: 10,177 same images for all experiments (all unique ppl exist in the vault)
 
         returns train_inds, test_inds, vault_inds
