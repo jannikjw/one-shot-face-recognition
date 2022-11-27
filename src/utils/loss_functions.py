@@ -16,7 +16,7 @@ class TripletLoss(nn.Module):
         return func(x1, x2)
 
     def euclidean_dist(self, x1: torch.Tensor, x2: torch.Tensor):
-        return torch.sum(torch.pow(torch.subtract(x1, x2), 2), 1)
+        return (x1-x2).pow(2).sum(axis=1)
 
     def forward(self, anchor: torch.Tensor, positive: torch.Tensor, negative: torch.Tensor) -> torch.Tensor:
         pos_dist = self.cal_distance(anchor, positive)
