@@ -21,7 +21,7 @@ class Experiment:
         # Dynamically change the device based on the system
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         
-        parent_dir = 'one-shot-face-recognition/' # parent directory for path (github repo name)
+        parent_dir = '' #'one-shot-face-recognition/' # parent directory for path (github repo name)
 
         # Initialize the directory structure
         if not os.path.exists(parent_dir+'embeddings'):
