@@ -160,8 +160,8 @@ class CelebADataset(Dataset):
             #pos_examples = df[df['person_id']==int(anchor)]['file_id'].values        
             pos_examples = df[df['person_id']==int(anchor)].index.values
 
-            if sample and len(pos_examples) > num_examples:
-                pos_examples = np.random.choice(pos_examples, size=num_examples, replace=False)
+            if sample and len(pos_examples)!=0:
+                pos_examples = np.random.choice(pos_examples, size=num_examples)
 
             pos_obs_idx = np.hstack([pos_obs_idx, pos_examples])
 
@@ -334,17 +334,20 @@ class CelebADatasetTriplet(CelebADataset):
         if get_train:
             assert idx < len(self.train_image_names), "Index is out of range for train dataset"
             filename = self.train_image_names.loc[idx]
-            
+
         else:
             if idx >= len(self.test_image_names):
                 print(idx)
             assert idx < len(self.test_image_names), "Index is out of range for test dataset"
             filename = self.test_image_names.loc[idx]
-        
-        
+
+
         img_path = os.path.join(self.root_dir, filename)
         # Load image and convert it to RGB
-        img = Image.open(img_path).convert("RGB")
+        try:
+            img = Image.open(img_path).convert("RGB")
+        except FileNotFoundError:
+            raise(f"get_train is {get_train}, idx is {idx}, image name is: {filename}")
         # Apply transformations to the image
         if self.transform:
             img = self.transform(img)
@@ -361,10 +364,13 @@ class CelebADatasetTriplet(CelebADataset):
 
             # loading positive image
             pos_list = self.test_df["file_name"][(self.test_df["person_id"]==anchor_label)]
-            pos_name = pos_list.sample(n=1, random_state=42)
-            pos_idx = pos_name.index[0]
+            if len(pos_list) == 0:
+                positive = anchor
+            else:
+                pos_name = pos_list.sample(n=1) #random_state=42
+                pos_idx = pos_name.index[0]
 
-            positive, pos_label, pos_name = self.get_image_label(pos_idx, get_train=False)
+                positive, pos_label, pos_name = self.get_image_label(pos_idx, get_train=False)
 
             # loading negative image
             neg_list = self.test_df["file_name"][(self.test_df["person_id"]!=anchor_label)]
