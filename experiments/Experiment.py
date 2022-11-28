@@ -3,9 +3,9 @@ from src.utils.celeba_helper import CelebADataset
 from torchvision import transforms
 from facenet_pytorch import InceptionResnetV1, fixed_image_standardization
 import torch
-import numpy as np
+import cupy as np
 from torch.utils.data import DataLoader, SubsetRandomSampler
-import pandas as pd
+import cudf as pd
 from tqdm import tqdm
 import os, json
 from src.utils.triplet_loss import BatchAllTripletLoss
@@ -94,70 +94,7 @@ class Experiment:
             ])
         
         return transform
-    
-    # def _train_test_helper(self, file_label_mapping):
-    #     """
-    #     Helper Function for Splitting Train & Test
-    #     Goal: Test Set should be the same no matter the experiment run
-    #     """
-    #     # get first file for each person (this will be in train set) 10,177 images
-    #     first_img_file = file_label_mapping.drop_duplicates(subset='person_id', keep='first', inplace=False, ignore_index=False)
-    #     rest = file_label_mapping.drop(first_img_file.index, axis=0, inplace=False)
 
-    #     # get second file for each person (this will be in test set) 10,133 images
-    #     second_img_file = rest.drop_duplicates(subset='person_id', keep='first', inplace=False, ignore_index=False) 
-    #     rest.drop(second_img_file.index, axis=0, inplace=True)
-
-    #     # sample the remaining images for the test set to reach 35,000 total images
-    #     test_sample = rest.sample(n=35000-len(second_img_file), random_state=42)
-    #     rest.drop(test_sample.index, axis=0, inplace=True)
-
-    #     return first_img_file, second_img_file, test_sample, rest
-    
-    # def _create_train_test_split(self):
-    #     """
-    #     Unified Train/Test for Experiments
-    #     Train Set: if orig data or mtcnn - 167,599 images of 10,177 unique ppl
-    #                if GAN Aug - 261,027 images of 10,177 unique ppl (all gan generated images will be in the training set)
-    #     Test Set: 35,000 images of 10,133 unique ppl
-
-    #     Returns the indices of the train (can vary btw experiments) & test images (same for all experiments) in the full celeba dataset & the vault inds (same for all experiments)
-    #     """
-        
-    #     file_label_mapping = self.dataset.file_label_mapping
-
-    #     if self.config.train.uses_GAN:
-    #         # get the images from the original celeba dataset which all have filenames of length 10 ['000001.jpg' to '202599.jpg']
-    #         orig_celeba = file_label_mapping.loc[file_label_mapping['file_name'].str.len() == 10]
-
-    #         first_img_file, second_img_file, test_sample, rest = self._train_test_helper(orig_celeba)
-
-    #         # get the GAN generated images (these will all go in train to keep test set same for all experiments)
-    #         gan_imgs = file_label_mapping.drop(orig_celeba.index, axis=0, inplace=False)
-
-    #         # create train df
-    #         self.train_df = pd.concat([first_img_file, rest, gan_imgs]) # add GAN generated images to train set
-    #     else:
-    #         first_img_file, second_img_file, test_sample, rest = self._train_test_helper(file_label_mapping)
-            
-    #          # create train df
-    #         self.train_df = pd.concat([first_img_file, rest])
-
-    #     # create test df (same for all experiments)
-    #     self.test_df = pd.concat([second_img_file, test_sample])
-        
-    #     train_inds = self.train_df.index.tolist()
-    #     test_inds = self.test_df.index.tolist()
-        
-    #     # define the first file images as the vault images that will be used for inference (same for all experiments)
-    #     vault_inds = first_img_file.index.tolist()
-
-    #     print(f'Total Dataset size is: {len(self.dataset)}')
-    #     print(f'Train Set size is: {len(train_inds)}')
-    #     print(f'Test Set size is: {len(test_inds)}')
-    #     print(f'Vault Set size is: {len(vault_inds)}')
-
-    #     return train_inds, test_inds, vault_inds
 
     def _train_test_helper(self, file_label_mapping):
         """
@@ -264,6 +201,7 @@ class Experiment:
             num_workers=self.config.train.num_workers,
             batch_size=self.config.train.batch_size,
             pin_memory=self.config.train.pin_memory,
+            prefetch_factor=self.config.train.prefetch_factor,
             sampler=SubsetRandomSampler(train_inds)
         )
     
@@ -278,7 +216,8 @@ class Experiment:
             num_workers=self.config.train.num_workers,
             batch_size=self.config.train.batch_size,
             pin_memory=self.config.train.pin_memory,
-            sampler=SubsetRandomSampler(test_inds)
+            prefetch_factor=self.config.train.prefetch_factor,
+            sampler=SubsetRandomSampler(test_inds),
         )
 
     def _load_image_vault(self, vault_inds):
@@ -292,6 +231,7 @@ class Experiment:
         num_workers=self.config.train.num_workers,
         batch_size=self.config.train.batch_size,
         pin_memory=self.config.train.pin_memory,
+        prefetch_factor=self.config.train.prefetch_factor,
         sampler=SubsetRandomSampler(vault_inds)
         )
      
@@ -334,7 +274,7 @@ class Experiment:
             print("Let's use", torch.cuda.device_count(), "GPUs!")
             model = torch.nn.DataParallel(model)
     
-        self.model = model
+        self.model = model.to(self.device)
 
         # Feature Extracting is freezing all the layers except the last one
         # Fine Tuning is freezing nothing at all.
@@ -353,7 +293,7 @@ class Experiment:
 
     def _train_step(self, X, y, train_df):
         # find positive observations for images in each batch
-        X, y = self.dataset.find_positive_observations(X, y, train_df, sample=self.config.train.subsample_positives, num_examples=self.config.train.num_positive)
+        # X, y = self.dataset.find_positive_observations(X, y, train_df, sample=self.config.train.subsample_positives, num_examples=self.config.train.num_positive)
 
         # Create embeddings
         X_emb = self.model(X.to(self.device))
@@ -508,94 +448,3 @@ class Experiment:
 
         return score
     
-    
-    # @staticmethod
-    # def create_embeddings(model, dataloader):
-    #     gt_labels = []
-    #     embeddings = torch.tensor([])
-        
-    #     for i, (X, y, _) in enumerate(dataloader):
-    #         img = X # Gives use the images
-
-    #         img_emb = model(img) # img is a batch of images
-
-    #         embeddings = torch.cat([embeddings, img_emb]) 
-
-    #         gt_labels.extend(y) # extend the labels
-
-    #         if i == 1:
-    #             break
-
-    #     return embeddings, gt_labels
-    
-# class ExperimentAllFiles(Experiment):
-#     """Experiment class for using all available files for train set"""
-#     def __init__(self, cfg):
-#         self.config = Config.from_json(cfg)
-    
-#     def _load_image_train(self, train_inds):
-#         """
-#         Define and load the train dataset.
-#         """
-#         # Create dataloaders
-#         train_loader = DataLoader( # Make sure this works
-#             celeba_dataset,
-#             num_workers=num_workers,
-#             batch_size=batch_size,
-#             pin_memory=pin_memory,
-#             sampler=SubsetRandomSampler(train_inds)
-#         )
-    
-    
-# class Experiment2Shot(Experiment):
-#     """
-#     Experiment class for 2-shot train set
-#     If a person does not have at least 2 images in train dataset, disregard them.
-#     """
-#     def __init__(self, cfg):
-#         self.config = Config.from_json(cfg)
-    
-#     def _load_image_train(self, train_inds):
-#         """
-#         Define and load the train dataset.
-#         """
-#         flm = pd.DataFrame.copy(self.dataset.file_label_mapping)
-#         flm = flm.iloc[train_inds]
-#         flm['count'] = flm.groupby('person_id')['person_id'].transform('size')
-#         flm = flm[flm['count'] >= 2] # Need to have at least 2 images for a person (2 go into train set)
-#         self.train_df = flm.groupby('person_id', sort=False).sample(n=2, random_state=42)#.sort_values(by='file_name')
-
-#         new_train_inds = self.train_df.index.tolist()
-
-#         #Create dataloaders
-#         self.train_loader = DataLoader(
-#             self.dataset,
-#             num_workers=self.config.train.num_workers,
-#             batch_size=self.config.train.batch_size,
-#             pin_memory=self.config.train.pin_memory,
-#             sampler=SubsetRandomSampler(new_train_inds)
-#         )
-        
-# class Experiment1Shot(Experiment):
-#     """Experiment class for 1-shot train set"""
-#     def __init__(self, cfg):
-#         self.config = Config.from_json(cfg)
-    
-#     def _load_image_train(self):
-#         """
-#         Define and load the train dataset. 
-#         To be used with GAN Data Augmentation: this Training Set must contain the first image file_name for each unique person_id in dataset (10,177) images
-#         """
-#         # Obtain the first file_name for each person_id in the file_label_mapping dataframe
-#         flm = pd.DataFrame.copy(self.dataset.file_label_mapping)
-#         self.train_df = flm.drop_duplicates(subset='person_id', keep='first', inplace=False, ignore_index=False) # 10,177 images to match if using GAN data aug
-#         new_train_inds = self.train_df.index.tolist()
-        
-#         # Create dataloaders
-#         self.train_loader = DataLoader(
-#             self.dataset,
-#             num_workers=self.config.train.num_workers,
-#             batch_size=self.config.train.batch_size,
-#             pin_memory=self.config.train.pin_memory,
-#             sampler=SubsetRandomSampler(new_train_inds)
-#         ) 

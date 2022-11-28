@@ -10,11 +10,12 @@ CFG = {
         "uses_GAN": False, # if use_GAN is true, then uses_augmentation MUST BE False
         "is_finetuning": False,
         "is_feature_extracting": True,
-        "num_workers": 20, # 0 if cuda:0
+        "num_workers": 16, # 0 if cuda:0
         "pin_memory": False, # True if cuda:0
-        "batch_size": 128,
-        "buffer_size": 1000,
-        "epochs": 20,
+        "batch_size": 1024,
+        "buffer_size": 1200,
+        "prefetch_factor": 250,
+        "epochs": 100,
         "optimizer": {
             "type": "adam",
             "lr": 0.01,
