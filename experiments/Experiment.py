@@ -293,7 +293,7 @@ class Experiment:
 
     def _train_step(self, X, y, train_df):
         # find positive observations for images in each batch
-        # X, y = self.dataset.find_positive_observations(X, y, train_df, sample=self.config.train.subsample_positives, num_examples=self.config.train.num_positive)
+        X, y = self.dataset.find_positive_observations(X, y, train_df, sample=self.config.train.subsample_positives, num_examples=self.config.train.num_positive)
 
         # Create embeddings
         X_emb = self.model(X.to(self.device))
