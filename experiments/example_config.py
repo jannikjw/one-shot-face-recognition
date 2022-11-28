@@ -10,7 +10,7 @@ CFG = {
         "uses_GAN": False, # if use_GAN is true, then uses_augmentation MUST BE False
         "is_finetuning": False,
         "is_feature_extracting": True,
-        "num_workers": 2, # 0 if cuda:0
+        "num_workers": 20, # 0 if cuda:0
         "pin_memory": False, # True if cuda:0
         "batch_size": 128,
         "buffer_size": 1000,
