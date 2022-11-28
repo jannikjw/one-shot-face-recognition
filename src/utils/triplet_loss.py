@@ -46,7 +46,7 @@ def get_triplet_mask(labels):
     return mask
 
 
-class BatchAllTtripletLoss(nn.Module):
+class BatchAllTripletLoss(nn.Module):
     """Uses all valid triplets to compute Triplet loss
     Args:
     margin: Margin value in the Triplet Loss equation

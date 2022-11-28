@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader, SubsetRandomSampler
 import pandas as pd
 from tqdm import tqdm
 import os, json
-from src.utils.triplet_loss import BatchAllTtripletLoss
+from src.utils.triplet_loss import BatchAllTripletLoss
 import torch.optim as optim
 from PIL import Image
 from sklearn.neighbors import KNeighborsClassifier
@@ -343,7 +343,7 @@ class Experiment:
 
         self.optimizer = optim.Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr=self.config.train.optimizer.lr)
         
-        self.criterion = BatchAllTtripletLoss()
+        self.criterion = BatchAllTripletLoss()
         
         self.scheduler = torch.optim.lr_scheduler.MultiStepLR(
             self.optimizer, 
