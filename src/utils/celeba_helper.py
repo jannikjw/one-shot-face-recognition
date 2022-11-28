@@ -95,7 +95,7 @@ class CelebADataset(Dataset):
         if label is None:
             raise Exception('No Label found.')
         else:
-            return label - 1
+            return label
 
         
     def get_labels_from_file_names(self, file_names: list):

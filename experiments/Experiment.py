@@ -327,8 +327,14 @@ class Experiment:
 
     def build(self):
         """Create model."""
-        self.model = InceptionResnetV1(
-            pretrained=self.config.model.model_weights).to(self.device)
+        model = InceptionResnetV1(
+            pretrained=self.config.model.model_weights)
+        
+        if torch.cuda.device_count() > 1:
+            print("Let's use", torch.cuda.device_count(), "GPUs!")
+            model = torch.nn.DataParallel(model)
+    
+        self.model = model
 
         # Feature Extracting is freezing all the layers except the last one
         # Fine Tuning is freezing nothing at all.
@@ -347,7 +353,7 @@ class Experiment:
 
     def _train_step(self, X, y, train_df):
         # find positive observations for images in each batch
-        X, y = self.dataset.find_positive_observations(X, y, train_df)
+        X, y = self.dataset.find_positive_observations(X, y, train_df, sample=self.config.train.subsample_positives, num_examples=self.config.train.num_positive)
 
         # Create embeddings
         X_emb = self.model(X.to(self.device))
@@ -490,6 +496,7 @@ class Experiment:
             json.dump(json_data, model_data)
         print('Saved Test Accuracy')
     
+
     def evaluate(self, vault_embeddings, vault_labels, test_embeddings, test_labels):
         """Predict results for test set and measure accuracy."""
         

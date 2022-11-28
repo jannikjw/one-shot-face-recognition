@@ -20,7 +20,9 @@ CFG = {
             "lr": 0.01,
             "schedule": [25, 50, 75, 85],
         },
-        "metrics": ["accuracy", "loss"]
+        "metrics": ["accuracy", "loss"],
+        "subsample_positives": True,
+        "num_positive": 1, 
     },
     "evaluate": {
         "classifier": "knn"
