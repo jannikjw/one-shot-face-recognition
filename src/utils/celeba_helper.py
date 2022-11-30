@@ -5,9 +5,9 @@ from torch import tensor
 from torch.utils.data import Dataset, DataLoader
 from natsort import natsorted
 from PIL import Image
-import cupy as np
+import numpy as np
 from tqdm import tqdm
-import cudf as pd
+import pandas as pd
 from src.utils.similarity_functions import (
     cosine_similarity,
     min_norm_2,
