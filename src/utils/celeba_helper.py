@@ -84,8 +84,9 @@ class CelebADataset(Dataset):
             img = self.transform(img)
 
         target = self.get_label_from_file_name(self.image_names[idx])
-
-        return img, target, self.image_names[idx]
+        image_name = self.image_names[idx]
+            
+        return img, target, image_name
     
 
     def get_label_from_file_name(self, file_name):

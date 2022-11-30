@@ -3,9 +3,10 @@ from src.utils.celeba_helper import CelebADataset
 from torchvision import transforms
 from facenet_pytorch import InceptionResnetV1, fixed_image_standardization
 import torch
-import cupy as np
+import numpy as np
 from torch.utils.data import DataLoader, SubsetRandomSampler
-import cudf as pd
+from src.utils.batch_sampler import BatchSampler
+import pandas as pd
 from tqdm import tqdm
 import os, json
 from src.utils.triplet_loss import BatchAllTripletLoss
@@ -172,15 +173,23 @@ class Experiment:
         self.test_df = test_df  
         
         # sort dataframes so that positive triplets occur together
+        train_df['file_id'], test_df['file_id'] = train_df.index, test_df.index
         train_df = train_df.sort_values(by=['person_id', 'file_id']) 
         test_df = test_df.sort_values(by=['person_id', 'file_id']) 
 
+        grouped_train_df = train_df.groupby('person_id').agg({'file_id': list})
+        grouped_test_df = test_df.groupby('person_id').agg({'file_id': list})
+        
+        label_batches_train = grouped_train_df.file_id.values
+        label_batches_test = grouped_test_df.file_id.values
+        
         train_inds = self.train_df.index.tolist()
         test_inds = self.test_df.index.tolist()
         
         # define the first file images as the vault images that will be used for inference (same for all experiments)
         vault_inds = first_img_file.index.tolist()
-
+        label_batches_vault = [[i] for i in vault_inds]
+        
         # store labels for data in test that is unseen by train
         self.unseen_labels = test_fif_unique.person_id.values
 
@@ -193,7 +202,7 @@ class Experiment:
         print(f'Number of Unique Ppl in Vault is: {first_img_file.person_id.nunique()}')
         print(f'Number of Unique ppl in Test Set that DO NOT appear in Train: {len(np.setdiff1d(self.test_df.person_id.values, self.train_df.person_id.values))}')
 
-        return train_inds, test_inds, vault_inds
+        return train_inds, test_inds, vault_inds, label_batches_train, label_batches_test, label_batches_vault
 
     def _load_image_train(self, train_inds):
         """
@@ -203,10 +212,10 @@ class Experiment:
         self.train_loader = DataLoader(
             self.dataset,
             num_workers=self.config.train.num_workers,
-            batch_size=self.config.train.batch_size,
+            # batch_size=self.config.train.batch_size,
             pin_memory=self.config.train.pin_memory,
             prefetch_factor=self.config.train.prefetch_factor,
-            sampler=SubsetRandomSampler(train_inds)
+            batch_sampler=BatchSampler(SubsetRandomSampler(train_inds), batch_size=self.config.train.batch_size, drop_last=True)
         )
     
     def _load_image_test(self, test_inds):
@@ -218,10 +227,10 @@ class Experiment:
         self.test_loader = DataLoader(
             self.dataset,
             num_workers=self.config.train.num_workers,
-            batch_size=self.config.train.batch_size,
+            # batch_size=self.config.train.batch_size,
             pin_memory=self.config.train.pin_memory,
             prefetch_factor=self.config.train.prefetch_factor,
-            sampler=SubsetRandomSampler(test_inds),
+            batch_sampler=BatchSampler(SubsetRandomSampler(test_inds), batch_size=self.config.train.batch_size, drop_last=True)
         )
 
     def _load_image_vault(self, vault_inds):
@@ -233,10 +242,10 @@ class Experiment:
         self.vault_loader = DataLoader(
         self.dataset,
         num_workers=self.config.train.num_workers,
-        batch_size=self.config.train.batch_size,
+        # batch_size=self.config.train.batch_size,
         pin_memory=self.config.train.pin_memory,
         prefetch_factor=self.config.train.prefetch_factor,
-        sampler=SubsetRandomSampler(vault_inds)
+        batch_sampler=BatchSampler(SubsetRandomSampler(vault_inds), batch_size=self.config.train.batch_size, drop_last=True)
         )
      
     @staticmethod 
@@ -255,11 +264,12 @@ class Experiment:
     @staticmethod
     def create_embeddings(model, dataloader, device, dataset_size, batch_size):
         embeddings = torch.tensor([])
+        labels = torch.tensor([])
         
-        for idx, batch in tqdm(enumerate(dataloader), total=int(dataset_size/batch_size)):
+        for batch in tqdm(dataloader):
             imgs, batch_labels, _ = batch
             batch_embeddings = model(imgs.to(device)).detach().cpu()
-
+            
             if not embeddings.numel():
                 embeddings = batch_embeddings
                 labels = batch_labels
@@ -295,9 +305,9 @@ class Experiment:
             gamma=self.config.model.gamma
         )
 
-    def _train_step(self, X, y, train_df):
+    def _train_step(self, X, y):
         # find positive observations for images in each batch
-        X, y = self.dataset.find_positive_observations(X, y, train_df, sample=self.config.train.subsample_positives, num_examples=self.config.train.num_positive)
+        # X, y = self.dataset.find_positive_observations(X, y, train_df, sample=self.config.train.subsample_positives, num_examples=self.config.train.num_positive)
 
         # Create embeddings
         X_emb = self.model(X.to(self.device))
@@ -319,10 +329,10 @@ class Experiment:
         print('Loaded Data')
 
         # Create Train Test Split & Load
-        train_inds, test_inds, vault_inds = self._create_train_test_split()
-        self._load_image_train(train_inds)
-        self._load_image_test(test_inds)
-        self._load_image_vault(vault_inds)
+        train_inds, test_inds, vault_inds, label_batches_train, label_batches_test, label_batches_vault = self._create_train_test_split()
+        self._load_image_train(label_batches_train)
+        self._load_image_test(label_batches_test)
+        self._load_image_vault(label_batches_vault)
         print('Created Train Test Split & Dataloaders')
 
         # Build Model
@@ -338,8 +348,8 @@ class Experiment:
         for epoch in tqdm(range(self.config.train.epochs), desc="Epochs", leave=True):
             running_loss = []
             # X batch imgs, y batch labels
-            for step, (X, y, _) in enumerate(tqdm(self.train_loader, desc='Current Batch', leave=True)): 
-                loss = self._train_step(X, y, self.train_df)
+            for step, (X, y, _) in enumerate(tqdm(self.train_loader, total=len(self.train_df)//self.config.train.batch_size, desc='Current Batch', leave=True)): 
+                loss = self._train_step(X, y)
                 running_loss.append(loss.cpu().detach().numpy())
 
             # Append the train loss
@@ -425,10 +435,13 @@ class Experiment:
         
         # Storing Test Accuracy
         test_accuracy = self.evaluate(vault_embeddings, vault_labels, test_embeddings, test_labels)
-
+        print(f"Test Accuracy = {test_accuracy}.")
+        
         # Unseen Label Test Accuracy only on 1000 unique labels in test
         mask = torch.isin(test_labels, torch.from_numpy(self.unseen_labels))
         unseen_label_test_accuracy = self.evaluate(vault_embeddings, vault_labels, test_embeddings[mask], test_labels[mask])
+        
+        print(f"Vault Test Accuracy = {unseen_label_test_accuracy}.")
 
         with open(self.model_data_file_name, 'r') as model_data:
             json_data = json.load(model_data)
@@ -447,7 +460,6 @@ class Experiment:
         knn = KNeighborsClassifier(n_neighbors=1)
 
         knn.fit(vault_embeddings, vault_labels)
-
         score = knn.score(test_embeddings, test_labels)
 
         return score
