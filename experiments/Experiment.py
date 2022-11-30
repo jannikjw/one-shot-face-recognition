@@ -170,6 +170,10 @@ class Experiment:
 
         # create test df (same for all experiments)
         self.test_df = test_df  
+        
+        # sort dataframes so that positive triplets occur together
+        train_df = train_df.sort_values(by=['person_id', 'file_id']) 
+        test_df = test_df.sort_values(by=['person_id', 'file_id']) 
 
         train_inds = self.train_df.index.tolist()
         test_inds = self.test_df.index.tolist()
