@@ -160,8 +160,8 @@ class CelebADataset(Dataset):
             #pos_examples = df[df['person_id']==int(anchor)]['file_id'].values        
             pos_examples = df[df['person_id']==int(anchor)].index.values
 
-            if sample and len(pos_examples)!=0:
-                pos_examples = np.random.choice(pos_examples, size=num_examples)
+            if sample and len(pos_examples) > num_examples:
+                pos_examples = np.random.choice(pos_examples, size=num_examples, replace=False)
 
             pos_obs_idx = np.hstack([pos_obs_idx, pos_examples])
 
