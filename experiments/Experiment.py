@@ -12,6 +12,7 @@ import os, json
 from src.utils.triplet_loss import BatchAllTripletLoss
 import torch.optim as optim
 from PIL import Image
+import random
 from sklearn.neighbors import KNeighborsClassifier
 
 class Experiment:
@@ -186,6 +187,11 @@ class Experiment:
         train_inds = self.train_df.index.tolist()
         test_inds = self.test_df.index.tolist()
         
+        # Take validation set from test set
+        np.shuffle(label_batches_test)
+        label_batches_val = label_batches_test[:int(0.1 * len(label_batches_test))]
+        val_inds = label_batches_val.flatten()
+                
         # define the first file images as the vault images that will be used for inference (same for all experiments)
         vault_inds = first_img_file.index.tolist()
         label_batches_vault = [[i] for i in vault_inds]
@@ -202,7 +208,15 @@ class Experiment:
         print(f'Number of Unique Ppl in Vault is: {first_img_file.person_id.nunique()}')
         print(f'Number of Unique ppl in Test Set that DO NOT appear in Train: {len(np.setdiff1d(self.test_df.person_id.values, self.train_df.person_id.values))}')
 
-        return train_inds, test_inds, vault_inds, label_batches_train, label_batches_test, label_batches_vault
+        return {'train_inds': train_inds, 
+                'test_inds': test_inds,
+                'val_inds': val_inds,
+                'vault_inds': vault_inds, 
+                'label_batches_train': label_batches_train, 
+                'label_batches_test': label_batches_test, 
+                'label_batches_vault': label_batches_vault,
+                'label_batches_val': label_batches_val
+               }
 
     def _load_image_train(self, train_inds):
         """
@@ -216,6 +230,20 @@ class Experiment:
             pin_memory=self.config.train.pin_memory,
             prefetch_factor=self.config.train.prefetch_factor,
             batch_sampler=BatchSampler(SubsetRandomSampler(train_inds), batch_size=self.config.train.batch_size, drop_last=True)
+        )
+        
+    def _load_image_val(self, val_inds):
+        """
+        Define and load the train dataset.
+        """
+        # Create dataloaders
+        self.train_loader = DataLoader(
+            self.dataset,
+            num_workers=self.config.train.num_workers,
+            # batch_size=self.config.train.batch_size,
+            pin_memory=self.config.train.pin_memory,
+            prefetch_factor=self.config.train.prefetch_factor,
+            batch_sampler=BatchSampler(SubsetRandomSampler(val_inds), batch_size=self.config.train.batch_size, drop_last=True)
         )
     
     def _load_image_test(self, test_inds):
@@ -329,10 +357,11 @@ class Experiment:
         print('Loaded Data')
 
         # Create Train Test Split & Load
-        train_inds, test_inds, vault_inds, label_batches_train, label_batches_test, label_batches_vault = self._create_train_test_split()
-        self._load_image_train(label_batches_train)
-        self._load_image_test(label_batches_test)
-        self._load_image_vault(label_batches_vault)
+        datasets = self._create_train_test_split()
+        self._load_image_train(datasets['label_batches_train'])
+        self._load_image_val(datasets['label_batches_val'])
+        self._load_image_test(datasets['label_batches_test'])
+        self._load_image_vault(datasets['label_batches_vault'])
         print('Created Train Test Split & Dataloaders')
 
         # Build Model
@@ -348,10 +377,10 @@ class Experiment:
         for epoch in tqdm(range(self.config.train.epochs), desc="Epochs", leave=True):
             running_loss = []
             # X batch imgs, y batch labels
-            for step, (X, y, _) in enumerate(tqdm(self.train_loader, total=len(self.train_df)//self.config.train.batch_size, desc='Current Batch', leave=True)): 
+            for step, (X, y, _) in enumerate(tqdm(self.train_loader, total=len(self.train_df)//self.config.train.batch_size, desc='Training:', leave=True)): 
                 loss = self._train_step(X, y)
-                running_loss.append(loss.cpu().detach().numpy())
-
+                running_loss.append(loss.cpu().detach().numpy())   
+            
             # Append the train loss
             mean_train_loss_per_epoch.append(np.mean(running_loss))
             
