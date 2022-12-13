@@ -188,9 +188,11 @@ class Experiment:
         test_inds = self.test_df.index.tolist()
         
         # Take validation set from test set
-        np.shuffle(label_batches_test)
+        np.random.shuffle(label_batches_test)
         label_batches_val = label_batches_test[:int(0.1 * len(label_batches_test))]
-        val_inds = label_batches_val.flatten()
+        val_inds = []
+        for batch in label_batches_val:
+            val_inds.extend(batch)
                 
         # define the first file images as the vault images that will be used for inference (same for all experiments)
         vault_inds = first_img_file.index.tolist()
@@ -237,7 +239,7 @@ class Experiment:
         Define and load the train dataset.
         """
         # Create dataloaders
-        self.train_loader = DataLoader(
+        self.val_loader = DataLoader(
             self.dataset,
             num_workers=self.config.train.num_workers,
             # batch_size=self.config.train.batch_size,
@@ -368,22 +370,33 @@ class Experiment:
         self.build()
         print('Build Model')
         
-        # Model in training mode
-        self.model.train()
         print('Start Training Model')
         
         mean_train_loss_per_epoch = []
+        mean_val_loss_per_epoch = []
 
         for epoch in tqdm(range(self.config.train.epochs), desc="Epochs", leave=True):
             running_loss = []
+            running_val_loss = []
+            
+            # Model in training mode
+            self.model.train()
             # X batch imgs, y batch labels
             for step, (X, y, _) in enumerate(tqdm(self.train_loader, total=len(self.train_df)//self.config.train.batch_size, desc='Training:', leave=True)): 
                 loss = self._train_step(X, y)
                 running_loss.append(loss.cpu().detach().numpy())   
             
+            # Model in evaluation mode
+            self.model.eval()
+            for step, (X, y, _) in enumerate(tqdm(self.val_loader, total=len(datasets['val_inds'])//self.config.train.batch_size, desc='Validation:', leave=True)): 
+                X_emb = self.model(X.to(self.device))
+                loss = self.criterion(X_emb, y.to(self.device))
+                running_val_loss.append(loss.cpu().detach().numpy())
+            
             # Append the train loss
             mean_train_loss_per_epoch.append(np.mean(running_loss))
-            
+            mean_val_loss_per_epoch.append(np.mean(running_val_loss))
+
             # Add the train loss to the json file under model data
             with open(self.model_data_file_name, 'r') as model_data:
                 json_data = json.load(model_data)
@@ -392,13 +405,18 @@ class Experiment:
             is_training_losses_present = json_data.get("training_losses", False)
             if not is_training_losses_present: 
                 json_data['training_losses'] = []
+            
+            is_validation_losses_present = json_data.get("validation_losses", False)
+            if not is_validation_losses_present: 
+                json_data['validation_losses'] = []
 
             json_data['training_losses'].append(float(np.mean(running_loss))) # converted to float for json serializable
+            json_data['validation_losses'].append(float(np.mean(running_val_loss))) # converted to float for json serializable
             
             with open(self.model_data_file_name, 'w') as model_data:
                 json.dump(json_data, model_data)
 
-            print("Epoch: {}/{} - Loss: {:.4f}".format(epoch+1, self.config.train.epochs, np.mean(running_loss)))
+            print("Epoch: {}/{} - Training Loss: {:.4f}. Validation Loss: {:4f}".format(epoch+1, self.config.train.epochs, np.mean(running_loss), np.mean(running_val_loss)))
 
             # Saving Model Weights after every 10 epochs
             if (epoch + 1) % 10 == 0:
@@ -419,7 +437,7 @@ class Experiment:
             model=self.model,
             dataloader=self.train_loader,
             device=self.device,
-            dataset_size=len(train_inds),
+            dataset_size=len(datasets['train_inds']),
             batch_size=self.config.train.batch_size
         )
 
@@ -435,7 +453,7 @@ class Experiment:
             model=self.model,
             dataloader=self.vault_loader,
             device=self.device,
-            dataset_size=len(vault_inds),
+            dataset_size=len(datasets['vault_inds']),
             batch_size=self.config.train.batch_size
         )
 
@@ -451,7 +469,7 @@ class Experiment:
             model=self.model,
             dataloader=self.test_loader,
             device=self.device,
-            dataset_size=len(test_inds),
+            dataset_size=len(datasets['test_inds']),
             batch_size=self.config.train.batch_size
         )
 
