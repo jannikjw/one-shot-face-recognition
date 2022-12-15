@@ -189,7 +189,7 @@ class Experiment:
         
         # Take validation set from test set
         np.random.shuffle(label_batches_test)
-        label_batches_val = label_batches_test[:int(0.1 * len(label_batches_test))]
+        label_batches_val = label_batches_test[:int(0.4 * len(label_batches_test))]
         val_inds = []
         for batch in label_batches_val:
             val_inds.extend(batch)
