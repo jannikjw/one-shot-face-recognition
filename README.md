@@ -1,5 +1,5 @@
 # One Shot Face Recognition
-This project deals with one-shot learning for face recognition. Faces need to recognized reliably using a single surveillance 
+This project deals with one-shot learning for face recognition. Faces need to be recognized reliably using a single surveillance 
 camera.
 
 ## Project Objective
